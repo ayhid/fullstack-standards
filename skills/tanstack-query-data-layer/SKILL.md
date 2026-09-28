@@ -8,6 +8,8 @@ description: Conventions for server state in a React + TanStack Query 5 SPA talk
 Before applying anything here, look for a **project profile** (usually in the project's
 `AGENTS.md`). It gives the real paths and commands and lists exceptions; it wins
 wherever it disagrees with this skill.
+No profile? Suggest creating one with the `project-profile` skill; meanwhile run its
+detector read-only (`project-profile/scripts/detect-profile.mjs .`) for the facts.
 
 ## The layering
 

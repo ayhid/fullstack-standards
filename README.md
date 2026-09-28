@@ -15,6 +15,7 @@ architecture:
 | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | [`tanstack-query-data-layer`](skills/tanstack-query-data-layer) | Adding or changing server state: query keys, hooks, mutations, HTTP calls, backend services |
 | [`fullstack-testing`](skills/fullstack-testing)                 | Writing or changing any test, on any layer                               |
+| [`project-profile`](skills/project-profile)                     | Creating or refreshing a repo's profile block in `AGENTS.md`             |
 
 ## Install
 
@@ -30,10 +31,17 @@ npx skills add <git-url-of-this-repo>
 ## Wire it into a project
 
 The skills hold the **generic** rules. Everything specific to one project (paths,
-commands, known debt, exceptions) stays in that project. Copy
-[`PROJECT-PROFILE.template.md`](PROJECT-PROFILE.template.md) into the project's
-`AGENTS.md` (or `docs/`) and fill it in; both skills tell the agent to read it first
-and to let it win on any conflict.
+commands, ORM, known debt) lives in that project's `AGENTS.md`, in a profile block
+both skills read first and defer to. Generate it:
+
+```bash
+node skills/project-profile/scripts/detect-profile.mjs <repo>           # preview
+node skills/project-profile/scripts/detect-profile.mjs <repo> --write   # write it
+```
+
+or ask an agent to "create the project profile", which also verifies each detected
+line and resolves the `TODO(verify)` fields. See
+[`PROJECT-PROFILE.template.md`](PROJECT-PROFILE.template.md).
 
 ## Updating
 

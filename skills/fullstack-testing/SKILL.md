@@ -8,6 +8,8 @@ description: Testing conventions for a NestJS + Postgres API on any ORM (TypeORM
 Before applying anything here, look for a **project profile** (usually in the project's
 `AGENTS.md`) and the project's `TESTING.md`. They give real paths, commands and known
 debt, and win wherever they disagree with this skill.
+No profile? Suggest creating one with the `project-profile` skill; meanwhile run its
+detector read-only (`project-profile/scripts/detect-profile.mjs .`) for the facts.
 
 ## Pick the layer — push each test as far down as it will go
 
