@@ -66,9 +66,10 @@ function walk(dir, maxDepth, out = [], depth = 0) {
   return out;
 }
 
+// Relative to the repo root, so a repo that itself lives under `tests/` is not all tests.
 const isTest = (f) =>
   /\.(test|spec|e2e-spec|integration-spec|stories)\.[cm]?[jt]sx?$/.test(f) ||
-  /[\\/](__tests__|__mocks__|test|tests|mocks|fixtures)[\\/]/.test(f);
+  /(^|[\\/])(__tests__|__mocks__|test|tests|mocks|fixtures)[\\/]/.test(rel(f));
 const isSource = (f) => /\.[cm]?[jt]sx?$/.test(f) && !f.endsWith('.d.ts');
 
 function grepFiles(files, pattern) {
@@ -291,7 +292,7 @@ function detectE2e() {
       utils: utils && rel(utils),
       command: ws.dir === root
         ? `${pm} run ${findScript(ws, ['test:e2e', 'test']) ?? 'test'}`
-        : command(ws, findScript(ws, ['test', 'test:e2e'])),
+        : command(ws, findScript(ws, ['test:e2e', 'test'])),
       needsStack: /webServer/.test(text) ? 'webServer block present — check whether it starts or only probes the stack' : TODO,
     };
   }
@@ -484,7 +485,7 @@ if (flag('--json')) {
   const block = renderBlock(manual);
   const pattern = new RegExp(`${START}[\\s\\S]*?${END}`);
   const next = pattern.test(current)
-    ? current.replace(pattern, block)
+    ? current.replace(pattern, () => block) // a function: `$` in the block stays literal
     : `${current.trimEnd()}${current ? '\n\n' : ''}${block}\n`;
   fs.writeFileSync(file, next);
   console.log(`${pattern.test(current) ? 'Updated' : 'Added'} project profile in ${rel(file)}`);
