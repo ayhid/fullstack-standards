@@ -61,26 +61,57 @@ export class TasksService {
     return this.prisma.$transaction(async (tx) => {
       await this.assertProjectExists(tx, dto.projectId);
       const task = await tx.task.create({ data: dto });
-      await tx.project.update({
-        where: { id: dto.projectId },
-        data: { taskCount: { increment: 1 } },
-      });
+      await this.bumpTaskCount(tx, dto.projectId, 1);
       return task;
     });
   }
 
+  /** Moving a task to another project moves one unit between the counters. */
   async update(id: number, dto: UpdateTaskDto): Promise<Task> {
-    await this.findById(id);
-    return this.prisma.task.update({ where: { id }, data: dto });
+    return this.prisma.$transaction(async (tx) => {
+      const task = await this.findTaskOrThrow(tx, id);
+      if (dto.projectId !== undefined && dto.projectId !== task.projectId) {
+        await this.assertProjectExists(tx, dto.projectId);
+        await this.bumpTaskCount(tx, task.projectId, -1);
+        await this.bumpTaskCount(tx, dto.projectId, 1);
+      }
+      return tx.task.update({ where: { id }, data: dto });
+    });
   }
 
+  /** Deletes the task and decrements the project's counter atomically. */
   async remove(id: number): Promise<void> {
-    await this.findById(id);
-    await this.prisma.task.delete({ where: { id } });
+    await this.prisma.$transaction(async (tx) => {
+      const task = await this.findTaskOrThrow(tx, id);
+      await tx.task.delete({ where: { id } });
+      await this.bumpTaskCount(tx, task.projectId, -1);
+    });
   }
 
   // Anything a transaction calls takes `tx`, not the injected client —
   // otherwise it runs outside the transaction.
+  private async findTaskOrThrow(
+    tx: Prisma.TransactionClient,
+    id: number,
+  ): Promise<Task> {
+    const task = await tx.task.findUnique({ where: { id } });
+    if (!task) {
+      throw new NotFoundException(`Task ${id} not found`);
+    }
+    return task;
+  }
+
+  private async bumpTaskCount(
+    tx: Prisma.TransactionClient,
+    projectId: number,
+    by: 1 | -1,
+  ): Promise<void> {
+    await tx.project.update({
+      where: { id: projectId },
+      data: { taskCount: { increment: by } },
+    });
+  }
+
   private async assertProjectExists(
     tx: Prisma.TransactionClient,
     projectId: number,

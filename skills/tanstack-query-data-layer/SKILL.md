@@ -50,8 +50,9 @@ component  →  feature hook (useQuery / useMutation)  →  typed HTTP helper  �
   serve each other's data. Keep a filter-less form of the key as the shared prefix
   for invalidation.
 - **Keep one namespace per resource**, singular or plural, never both. A list keyed
-  under `'task'` and an invalidation under `'tasks'` never meet. The template's
-  test pins this.
+  under `'task'` and an invalidation under `'tasks'` never meet. The hook test in
+  `fullstack-testing/templates/frontend/tasks-list-invalidation.test.tsx` and the guard
+  `query-keys-contract.test.ts` pin this.
 - **Bulk operations settle, they do not reject.** N parallel deletes use
   `Promise.allSettled` and return `{ requestedIds, deletedIds, failures }`; a `404` on
   `DELETE` counts as deleted. Invalidate on both success and error. →

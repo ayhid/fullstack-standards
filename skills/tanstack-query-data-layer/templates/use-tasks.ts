@@ -8,7 +8,7 @@ import {
 
 import { bulkDelete, type BulkDeleteResult } from '@lib/api/bulk-delete';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@lib/api/http';
-import { queryKeys, type TaskListParams } from '@lib/api/queryKeys';
+import { queryKeys, type TaskListParams } from '@lib/api/query-keys';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -91,10 +91,8 @@ export function useCreateTask(options?: MutationCallbacks<Task>) {
     mutationFn: (input: CreateTaskInput) => apiPost<Task>('/tasks', input),
     onSuccess: task => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
-      // The parent's server-side view (task counters) changed too.
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.projects.detail(task.projectId),
-      });
+      // Project counters changed too, on the list and the detail page.
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
       options?.onSuccess?.(task);
     },
     onError: error => options?.onError?.(error),
@@ -110,6 +108,8 @@ export function useUpdateTask(options?: MutationCallbacks<Task>) {
     onSuccess: task => {
       queryClient.setQueryData(queryKeys.tasks.detail(task.id), task);
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      // A `projectId` change moves the task between two projects' counters.
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
       options?.onSuccess?.(task);
     },
     onError: error => options?.onError?.(error),
@@ -125,6 +125,7 @@ export function useDeleteTask(options?: MutationCallbacks<void>) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
       options?.onSuccess?.();
     },
     onError: error => options?.onError?.(error),
@@ -139,10 +140,12 @@ export function useBulkDeleteTasks(options?: MutationCallbacks<BulkDeleteResult>
     // `bulkDelete` settles, so this runs for partial and total failure too.
     onSuccess: result => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
       options?.onSuccess?.(result);
     },
     onError: error => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
       options?.onError?.(error);
     },
   });

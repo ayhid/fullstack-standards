@@ -1,6 +1,6 @@
 # Feature hooks
 
-One file per resource: `features/<feature>/hooks/use<Resource>s.ts`, laid out as
+One file per resource: `features/<feature>/hooks/use-<resource>s.ts`, laid out as
 **Types → Query hooks → Mutation hooks**. `templates/use-tasks.ts` is the full model.
 
 ## Query hooks
@@ -11,9 +11,11 @@ export function useTasks(
   options?: Omit<UseQueryOptions<PaginatedTasks, Error>, 'queryKey' | 'queryFn'>
 ) {
   const { page = 1, pageSize = 25, search, sortBy, order } = params ?? {};
+  // One object for both key and request, so they cannot drift.
+  const query = compact({ page, pageSize, search, ...(sortBy && order ? { sortBy, order } : {}) });
   return useQuery({
-    queryKey: queryKeys.tasks.lists({ page, pageSize, search, sortBy, order }),
-    queryFn: () => apiGet<PaginatedTasks>('/tasks', compact({ page, pageSize, search, sortBy, order })),
+    queryKey: queryKeys.tasks.lists(query),
+    queryFn: () => apiGet<PaginatedTasks>('/tasks', query),
     ...options,
   });
 }
@@ -37,7 +39,7 @@ export function useCreateTask(options?: MutationCallbacks<Task>) {
     mutationFn: (input: CreateTaskInput) => apiPost<Task>('/tasks', input),
     onSuccess: task => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(task.projectId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.all }); // task counters
       options?.onSuccess?.(task);
     },
     onError: error => options?.onError?.(error),

@@ -65,17 +65,37 @@ export class TasksService {
     });
   }
 
+  /** Moving a task to another project moves one unit between the counters. */
   async update(id: number, dto: UpdateTaskDto): Promise<Task> {
-    const task = await this.findById(id);
-    return this.taskRepository.save({ ...task, ...dto });
+    return this.dataSource.transaction(async manager => {
+      const task = await this.findTaskOrThrow(manager, id);
+      if (dto.projectId !== undefined && dto.projectId !== task.projectId) {
+        await this.assertProjectExists(manager, dto.projectId);
+        await manager.decrement(Project, { id: task.projectId }, 'taskCount', 1);
+        await manager.increment(Project, { id: dto.projectId }, 'taskCount', 1);
+      }
+      return manager.save(Task, { ...task, ...dto });
+    });
   }
 
+  /** Deletes the task and decrements the project's counter atomically. */
   async remove(id: number): Promise<void> {
-    const task = await this.findById(id);
-    await this.taskRepository.remove(task);
+    await this.dataSource.transaction(async manager => {
+      const task = await this.findTaskOrThrow(manager, id);
+      await manager.remove(task);
+      await manager.decrement(Project, { id: task.projectId }, 'taskCount', 1);
+    });
   }
 
   // Anything a transaction calls takes the EntityManager, not the injected repo.
+  private async findTaskOrThrow(manager: EntityManager, id: number): Promise<Task> {
+    const task = await manager.findOne(Task, { where: { id } });
+    if (!task) {
+      throw new NotFoundException(`Task ${id} not found`);
+    }
+    return task;
+  }
+
   private async assertProjectExists(
     manager: EntityManager,
     projectId: number,
