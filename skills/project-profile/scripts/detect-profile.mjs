@@ -230,12 +230,23 @@ function detectFrontend(ws) {
     const hit = grepFiles(files, re)[0];
     return hit && rel(hit);
   };
-  const featureHooks = [...new Set(
-    files
-      .map((f) => path.dirname(f))
-      .filter((d) => /features\/[^/]+\/hooks$/.test(d))
-      .map((d) => d.replace(/features\/[^/]+\/hooks$/, 'features/<feature>/hooks')),
-  )][0];
+  // Hooks: the `features/<x>/hooks` layout, else the folder holding the most
+  // non-test files that import TanStack Query.
+  const queryFiles = grepFiles(files, /from ['"]@tanstack\/react-query['"]/);
+  const perFeature = queryFiles.find((f) => /features\/[^/]+\/hooks\//.test(f));
+  const byDir = new Map();
+  for (const f of queryFiles) byDir.set(path.dirname(f), (byDir.get(path.dirname(f)) ?? 0) + 1);
+  const busiest = [...byDir.entries()].sort((a, b) => b[1] - a[1])[0];
+  const featureHooks = perFeature
+    ? rel(path.dirname(perFeature)).replace(/features\/[^/]+\/hooks$/, 'features/<feature>/hooks')
+    : busiest && `${rel(busiest[0])} (${busiest[1]} files using TanStack Query)`;
+
+  // Keys: one central factory, or per-hook `<resource>Keys` factories.
+  const perHookKeyFiles = grepFiles(files, /export const [a-z]\w*Keys\s*=\s*{/);
+  const inlineKeys = files
+    .filter((f) => isSource(f) && !isTest(f))
+    .reduce((n, f) => n + ((read(f) ?? '').match(/queryKey:\s*\[/g) ?? []).length, 0);
+
   const vitestConfig = files.find((f) => /vitest\.config\.[cm]?[jt]s$/.test(f));
   return {
     name: ws.pkg.name,
@@ -244,8 +255,11 @@ function detectFrontend(ws) {
     tanstackQuery: installedVersion(ws, '@tanstack/react-query'),
     queryClient: first(/new QueryClient\(\s*{[\s\S]*defaultOptions/) ?? first(/new QueryClient\(/),
     queryKeys: first(/export const (queryKeys|keys)\b/),
+    perHookKeyFactories: perHookKeyFiles.length,
+    perHookKeyDir: perHookKeyFiles[0] && rel(path.dirname(perHookKeyFiles[0])),
+    inlineKeys,
     httpClient: first(/export (async )?function api(Get|Fetch|Request)\b|export const api(Get|Client)\b/),
-    featureHooks: featureHooks && rel(featureHooks),
+    featureHooks,
     tests: {
       runner: hasDep(ws, 'vitest') ? 'vitest' : hasDep(ws, 'jest') ? 'jest' : TODO,
       command: command(ws, findScript(ws, ['test:unit', 'test'])),
@@ -382,7 +396,13 @@ function renderFrontend(fe) {
     '',
     `- ${fe.bundler} + TanStack Query ${v(fe.tanstackQuery)}`,
     `- QueryClient defaults: ${code(fe.queryClient)}`,
-    `- Query key factory: ${fe.queryKeys ? code(fe.queryKeys) : 'none found — create one from `tanstack-query-data-layer/templates/query-keys.ts`'}`,
+    `- Query key factory: ${
+      fe.queryKeys
+        ? code(fe.queryKeys)
+        : fe.perHookKeyFactories
+          ? `per-hook \`<resource>Keys\` factories (${fe.perHookKeyFactories} files, e.g. in ${code(fe.perHookKeyDir)}), no central factory`
+          : 'none found — create one from `tanstack-query-data-layer/templates/query-keys.ts`'
+    }${fe.inlineKeys ? `; ⚠️ ${fe.inlineKeys} inline \`queryKey: [...]\` arrays outside tests` : ''}`,
     `- HTTP client: ${code(fe.httpClient)}`,
     `- Feature hooks: ${code(fe.featureHooks)}`,
     `- Tests: ${fe.tests.runner} ${code(fe.tests.command)}${fe.tests.config ? `, config ${code(fe.tests.config)}` : ''}${fe.tests.tzUtc ? ', runs with `TZ=UTC`' : ''}`,
@@ -397,7 +417,6 @@ function renderE2e(e2e) {
     `- Specs: ${code(e2e.testDir)}; utils: ${code(e2e.utils)}`,
     `- Command: ${code(e2e.command)}`,
     `- Stack: ${e2e.needsStack}`,
-    `- Auth mechanism and rate limits that constrain the suite: ${TODO}`,
   ].join('\n');
 }
 
@@ -427,6 +446,7 @@ const MANUAL_DEFAULT = [
   MANUAL_START,
   '**Exceptions and known debt** (kept across re-runs — edit freely)',
   '',
+  `- E2E auth mechanism and rate limits that constrain the suite: ${TODO}`,
   `- Legacy patterns not to copy: ${TODO}`,
   `- Architecture guard specs: ${TODO}`,
   `- Reference-data tables (seeded once, preserved by truncation): ${TODO}`,
