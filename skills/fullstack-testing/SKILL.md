@@ -79,5 +79,5 @@ mocked browser spec with the API spec's work.
 | `templates/api-integration/core/`        | ORM-free harness: container, global setup/teardown, truncate, URL guard |
 | `templates/api-integration/typeorm/`     | TypeORM adapter: migrations, data source, module, factories, example spec |
 | `templates/api-integration/prisma/`      | Prisma adapter: migrate deploy, client, module, factories, example spec |
-| `templates/frontend/*`                   | Test QueryClient wrapper, invalidation spec, mutation spec |
+| `templates/frontend/*`                   | Test QueryClient wrapper, invalidation spec, mutation spec, query-key contract guard |
 | `templates/e2e/*`                        | Worker-scoped names, catch-all route guard               |

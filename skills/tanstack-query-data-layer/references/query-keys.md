@@ -52,3 +52,32 @@ it('uses one namespace for lists and invalidation', () => {
   );
 });
 ```
+
+## Enforce it with a guard test, not review
+
+`fullstack-testing/templates/frontend/query-keys-contract.test.ts` parses the source with
+the TypeScript compiler and fails on:
+
+- any `queryKey: [...]` array literal outside tests, **including inside a ternary branch**
+  (a text search misses `cond ? keys.a() : ['b', id]`);
+- a section key that leaves its section's `all` root;
+- two sections sharing a root.
+
+Prove it before trusting it: reintroduce one inline key and one shared root and watch it
+fail. With per-hook factories instead of one central object, import each factory and add a
+completeness check that the list matches every exported `*Keys`.
+
+## Keep factories where tests cannot erase them
+
+A page test that replaces a hook module wholesale (`vi.mock('.../use-session', () => ({...}))`)
+also erases any key factory exported from it, and every other module importing that factory
+breaks. Put a factory that other modules import in its own file (`session-keys.ts`), or in
+the central `queryKeys`.
+
+## Merging split roots changes behaviour — on purpose
+
+Moving `detail` under the list's root means invalidating `all` now also refetches mounted
+details. That is the fix, but check it per resource: form seeds and other data a write
+must not refetch belong under a separate root (e.g. an invoice pre-fill for an open form).
+Update tests that pin the old literal keys by hand, and keep them literal: a literal catches
+an accidental factory change that a test built from the factory would not.
