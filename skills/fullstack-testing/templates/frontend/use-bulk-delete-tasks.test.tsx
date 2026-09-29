@@ -6,8 +6,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useBulkDeleteTasks } from '@features/tasks/hooks/useTasks';
-import { queryKeys } from '@lib/api/queryKeys';
+import { useBulkDeleteTasks } from '@features/tasks/hooks/use-tasks';
+import { queryKeys } from '@lib/api/query-keys';
 import { createTestQueryClient, queryWrapper } from '@/test/query-test-utils';
 
 const { apiDeleteMock } = vi.hoisted(() => ({ apiDeleteMock: vi.fn() }));
@@ -33,7 +33,7 @@ describe('useBulkDeleteTasks', () => {
     vi.restoreAllMocks();
   });
 
-  it('resolves with per-id outcomes and invalidates the list on partial failure', async () => {
+  it('resolves with per-id outcomes and invalidates tasks and project counters on partial failure', async () => {
     const client = createTestQueryClient();
     const invalidate = vi.spyOn(client, 'invalidateQueries');
     apiDeleteMock.mockImplementation((path: string) =>
@@ -56,6 +56,7 @@ describe('useBulkDeleteTasks', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     expect(onError).not.toHaveBeenCalled();
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.tasks.all });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.projects.all });
   });
 
   it('counts an already-deleted (404) row as removed', async () => {

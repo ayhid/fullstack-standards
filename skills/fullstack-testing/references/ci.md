@@ -4,9 +4,9 @@
 | ---------------- | -------------------------------------------------------------------- |
 | lint             | ESLint across workspaces                                             |
 | typecheck        | `tsc --noEmit` across workspaces                                     |
-| test             | API unit + coverage, then frontend + coverage                        |
+| test             | API unit + HTTP specs + coverage, then frontend + coverage           |
 | build            | Production build of every app                                        |
-| api-db           | Postgres service container → API HTTP specs → API integration suite  |
+| api-db           | Postgres service container → API integration suite                   |
 | e2e (scheduled)  | Playwright `@smoke` against a deployed environment                   |
 
 - Give later steps in a job `if: ${{ !cancelled() }}` so one red step does not hide the

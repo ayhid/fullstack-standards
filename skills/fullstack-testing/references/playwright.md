@@ -8,7 +8,8 @@ contract you are deliberately proving). A mocked spec removes the *data* depende
 the *stack* dependency: it still loads the real frontend.
 
 **Guard mocked specs with a catch-all** (`templates/e2e/api-catch-all.ts`): register a
-route on the API origin that aborts and records anything no stub claimed, and assert
+route on the API base URL (e.g. `…/api`, not the app origin, which a relative `/api`
+shares with the SPA's own pages) that aborts and records anything no stub claimed, and assert
 the record is empty at the end. Playwright checks the **most recently registered** route
 first, so register the catch-all **before** the specific stubs.
 

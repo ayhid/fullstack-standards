@@ -19,7 +19,11 @@
 export const REFERENCE_TABLES: readonly string[] = [];
 
 export async function seedReferenceData(_databaseUrl: string): Promise<void> {
-  // e.g. Prisma:
-  //   const prisma = new PrismaClient({ datasourceUrl: databaseUrl });
+  // Build the client with the adapter's own factory so it matches your ORM version.
+  // e.g. Prisma (../prisma/test-prisma-client):
+  //   const prisma = createTestPrismaClient(databaseUrl);
   //   try { await seedCatalogue(prisma); } finally { await prisma.$disconnect(); }
+  // e.g. TypeORM (../typeorm/test-data-source):
+  //   const dataSource = await createTestDataSource(databaseUrl).initialize();
+  //   try { await seedCatalogue(dataSource); } finally { await dataSource.destroy(); }
 }

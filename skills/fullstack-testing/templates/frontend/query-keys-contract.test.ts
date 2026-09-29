@@ -27,7 +27,7 @@ import path from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
-import { queryKeys } from '@lib/api/queryKeys';
+import { queryKeys } from '@lib/api/query-keys';
 
 const APP_ROOT = path.resolve(__dirname, '..');
 const SKIPPED_DIRS = new Set(['node_modules', 'dist', 'coverage', '__tests__']);

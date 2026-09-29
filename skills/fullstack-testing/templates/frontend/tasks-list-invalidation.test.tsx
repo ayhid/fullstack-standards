@@ -15,8 +15,8 @@ import {
   useCreateTask,
   useTasks,
   useUpdateTask,
-} from '@features/tasks/hooks/useTasks';
-import { queryKeys } from '@lib/api/queryKeys';
+} from '@features/tasks/hooks/use-tasks';
+import { queryKeys } from '@lib/api/query-keys';
 import {
   createProductionLikeQueryClient,
   queryWrapper,
@@ -51,14 +51,25 @@ describe('tasks list invalidation', () => {
     vi.clearAllMocks();
   });
 
-  it('uses one key namespace for the list and the invalidation', () => {
-    expect(queryKeys.tasks.lists({ page: 1, pageSize: 25 })).toEqual(
-      expect.arrayContaining([...queryKeys.tasks.all])
-    );
+  // Asserts the key the hook actually caches. Comparing `lists()` with `all`
+  // proves nothing: the factory builds one from the other.
+  it('caches the list under the root that mutations invalidate', async () => {
+    const client = createProductionLikeQueryClient();
+    apiGetMock.mockResolvedValue(page([EXISTING]));
+
+    const list = renderHook(() => useTasks({ page: 1, pageSize: 25 }), {
+      wrapper: queryWrapper(client),
+    });
+    await waitFor(() => expect(list.result.current.isSuccess).toBe(true));
+
+    expect(
+      client.getQueryCache().findAll({ queryKey: queryKeys.tasks.all })
+    ).toHaveLength(1);
   });
 
   it('shows the created task when the list remounts after the form page', async () => {
     const client = createProductionLikeQueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
     apiGetMock.mockResolvedValue(page([EXISTING]));
     apiPostMock.mockResolvedValue(CREATED);
 
@@ -88,6 +99,8 @@ describe('tasks list invalidation', () => {
     await waitFor(() =>
       expect(again.result.current.data?.data[0]?.id).toBe(CREATED.id)
     );
+    // The project's task counter changed too.
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.projects.all });
   });
 
   it('shows the edited task on a list that stayed mounted', async () => {

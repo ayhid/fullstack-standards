@@ -7,6 +7,10 @@ import { expect, type Page } from '@playwright/test';
  * BEFORE registering any stub — it then only sees what no stub claimed. It
  * aborts those requests (so nothing reaches a real API) and records them.
  *
+ * `apiBaseUrl` is the full API base the app calls (e.g. `http://localhost:5173/api`),
+ * never the bare app origin: with a relative `/api` the API shares the SPA's
+ * origin, and a catch-all on the origin aborts the page's own documents and assets.
+ *
  * @example
  *   const unclaimed = await installApiCatchAll(page, API_URL);
  *   await mockSession(page, adminUser);
@@ -16,10 +20,10 @@ import { expect, type Page } from '@playwright/test';
  */
 export async function installApiCatchAll(
   page: Page,
-  apiOrigin: string
+  apiBaseUrl: string
 ): Promise<string[]> {
   const unclaimed: string[] = [];
-  await page.route(`${apiOrigin}/**`, async route => {
+  await page.route(`${apiBaseUrl}/**`, async route => {
     const request = route.request();
     unclaimed.push(`${request.method()} ${request.url()}`);
     await route.abort();
