@@ -1,0 +1,14 @@
+{
+  "name": "fullstack-standards",
+  "owner": {
+    "name": "Ayoub Hidri"
+  },
+  "description": "Engineering standards for React + TanStack Query frontends on REST backends (NestJS, Strapi), as skills plus enforcement hooks.",
+  "plugins": [
+    {
+      "name": "fullstack-standards",
+      "source": "./",
+      "description": "Skills and hooks for React + TanStack Query frontends on REST backends (NestJS, Strapi)."
+    }
+  ]
+}
