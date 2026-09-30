@@ -6,6 +6,9 @@
  *   node detect-profile.mjs [repoRoot]            print the block (read-only)
  *   node detect-profile.mjs [repoRoot] --json     print the raw detection
  *   node detect-profile.mjs [repoRoot] --write [--file AGENTS.md]
+ *   node detect-profile.mjs [repoRoot] --write-config
+ *        fill `.claude/fullstack-standards.json` (the layout the Claude Code
+ *        hooks enforce); values already in the file are never overwritten
  *        insert or replace the block between the markers in that file
  *
  * No dependencies. Anything it cannot detect is written as `TODO(verify)`;
@@ -51,6 +54,35 @@ const readJson = (p) => {
   }
 };
 const rel = (p) => path.relative(root, p) || '.';
+const toPosixPath = (p) => p.split(path.sep).join('/');
+/**
+ * tsconfig files allow comments and trailing commas. Comments are stripped
+ * outside strings only: `"src/**\/*"` contains a `/*` that is not one.
+ */
+const parseJsonc = (text) => {
+  if (!text) return undefined;
+  let out = '';
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j;
+    } else if (c === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i += 1;
+      out += '\n';
+    } else if (c === '/' && text[i + 1] === '*') {
+      i = text.indexOf('*/', i + 2) + 1;
+      if (i === 0) break;
+    } else out += c;
+  }
+  try {
+    return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
+  } catch {
+    return undefined;
+  }
+};
 
 function walk(dir, maxDepth, out = [], depth = 0) {
   if (depth > maxDepth || !exists(dir)) return out;
@@ -250,6 +282,8 @@ function detectApi(ws) {
     integrationSpecs: files.filter((f) => /\.integration-spec\.ts$/.test(f)).length,
   };
   api.thirdParty = detectThirdParty(ws, files);
+  const apiSrc = exists(path.join(ws.dir, 'src')) ? path.join(ws.dir, 'src') : ws.dir;
+  api.layout = { root: toPosixPath(rel(apiSrc)) };
   const envFile = read(path.join(ws.dir, '.env.example')) ?? read(path.join(ws.dir, '.env')) ?? '';
   api.tests.databaseUrlInEnv = /^DATABASE_URL=/m.test(envFile);
   return api;
@@ -298,12 +332,39 @@ function detectFrontend(ws) {
         (serviceImport.test(read(f) ?? '') || transportImport.test(read(f) ?? '')),
     ).length,
     hookTests: files.filter(
-      (f) => isTest(f) && /\brenderHook\s*\(/.test(read(f) ?? '') && /from\s+['"][^'"]*\/hooks\//.test(read(f) ?? ''),
+      // Co-located tests (`hooks/use-x.test.tsx` importing `./use-x`) count too.
+      (f) => isTest(f) && /\brenderHook\s*\(/.test(read(f) ?? '') &&
+        (inDir(f, /(^|\/)hooks\//) || /from\s+['"][^'"]*\/hooks\//.test(read(f) ?? '')),
     ).length,
+  };
+
+  // The layout the architecture hooks enforce, relative to the source root.
+  const srcDir = exists(path.join(ws.dir, 'src')) ? path.join(ws.dir, 'src') : ws.dir;
+  const inSrc = (f) => toPosixPath(path.relative(srcDir, f));
+  const tsconfig = ['tsconfig.app.json', 'tsconfig.json']
+    .map((f) => readJson(path.join(ws.dir, f)) ?? parseJsonc(read(path.join(ws.dir, f))))
+    .find((c) => c?.compilerOptions?.paths);
+  const aliases = {};
+  for (const [alias, targets] of Object.entries(tsconfig?.compilerOptions?.paths ?? {})) {
+    if (!alias.endsWith('/*') || !targets[0]?.endsWith('/*')) continue;
+    const target = inSrc(path.resolve(ws.dir, targets[0].slice(0, -2)));
+    if (!target.startsWith('..')) aliases[alias.slice(0, -1)] = target === '' ? '' : `${target}/`;
+  }
+  const componentDirs = ['components', 'pages', 'routes', 'app', 'views']
+    .filter((d) => exists(path.join(srcDir, d)))
+    .map((d) => `${d}/**`);
+  if (appFiles.some((f) => /features\/[^/]+\/components\//.test(f))) componentDirs.push('features/*/components/**');
+  const entryFile = appFiles.find((f) => /export const apiClient\b|export (async )?function (request|apiRequest)\b/.test(read(f) ?? ''));
+  const layout = {
+    root: toPosixPath(rel(srcDir)),
+    aliases,
+    components: componentDirs,
+    ...(entryFile ? { apiClient: inSrc(entryFile) } : {}),
   };
 
   const vitestConfig = files.find((f) => /vitest\.config\.[cm]?[jt]s$/.test(f));
   return {
+    layout,
     name: ws.pkg.name,
     dir: rel(ws.dir),
     bundler: hasDep(ws, 'vite') ? 'Vite' : hasDep(ws, 'next') ? 'Next.js' : TODO,
@@ -587,7 +648,37 @@ function renderBlock(manual) {
 
 // ─── output ──────────────────────────────────────────────────────────────────
 
-if (flag('--json')) {
+/** Existing values win, so hand edits and the baseline survive re-runs. */
+function mergeKeepingExisting(existing, detected) {
+  if (Array.isArray(existing) || typeof existing !== 'object' || existing === null) return existing ?? detected;
+  const out = { ...existing };
+  for (const [key, value] of Object.entries(detected)) {
+    out[key] = key in existing ? mergeKeepingExisting(existing[key], value) : value;
+  }
+  return out;
+}
+
+if (flag('--write-config')) {
+  const file = path.join(root, '.claude', 'fullstack-standards.json');
+  const current = readJson(file) ?? {};
+  const byRoot = (list = []) => new Map(list.map((u) => [u.root, u]));
+  const merge = (existingList, detectedList) => {
+    const existing = byRoot(existingList);
+    const detected = detectedList.map((d) => mergeKeepingExisting(existing.get(d.root), d));
+    const detectedRoots = new Set(detectedList.map((d) => d.root));
+    return [...detected, ...(existingList ?? []).filter((u) => !detectedRoots.has(u.root))];
+  };
+  const next = {
+    $comment: 'Layout enforced by the fullstack-standards Claude Code hooks. Edit freely: re-running project-profile never overwrites a value.',
+    ...current,
+    frontends: merge(current.frontends, frontends.map((f) => f.layout)),
+    apis: merge(current.apis, apis.filter((a) => a.framework === 'NestJS').map((a) => a.layout)),
+    baseline: current.baseline ?? {},
+  };
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
+  console.log(`${Object.keys(current).length ? 'Updated' : 'Wrote'} ${rel(file)}`);
+} else if (flag('--json')) {
   console.log(JSON.stringify(detection, null, 2));
 } else if (flag('--write')) {
   const file = path.resolve(root, option('--file') ?? 'AGENTS.md');

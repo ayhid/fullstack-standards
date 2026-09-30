@@ -29,6 +29,18 @@ merely filled in.
    the Postgres image, Node local vs CI, CI workflows, and
    whether Turbo caches `test`.
 
+   With the fullstack-standards plugin installed, also write the layout its hooks
+   enforce: `node <this skill>/scripts/detect-profile.mjs . --write-config` fills
+   `.claude/fullstack-standards.json` (source roots, `@/` aliases, component folders,
+   the API entry point) and never overwrites a value already there. Check each path
+   in it like any detected line. Then audit and, on a project with existing debt,
+   record the baseline — ask the user first, and not while a refactor is in flight:
+
+   ```bash
+   node <plugin>/scripts/architecture/check-architecture.mjs --all .
+   node <plugin>/scripts/architecture/check-architecture.mjs --baseline .
+   ```
+
 2. **Verify every detected line** against the repo before writing. The detector reads
    by pattern and can pick the wrong file. Open each path it names and check that it is
    the real one (e.g. the QueryClient with production `defaultOptions`, not a test
