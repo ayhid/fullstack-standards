@@ -182,7 +182,7 @@ async function send(config: ApiRequest): Promise<Response> {
       }
       return response;
     } catch (error) {
-      // The caller cancelled (TanStack Query unmount): do not retry.
+      // The caller cancelled (the data library aborted on unmount): do not retry.
       if (config.signal?.aborted) throw error;
       if (attempt < MAX_RETRIES && isRetryable(config, 'network')) {
         await wait(retryDelay(attempt, null));

@@ -1,6 +1,6 @@
 ---
 name: project-profile
-description: Create or refresh a repository's project profile — the AGENTS.md block that tells the tanstack-query-data-layer and fullstack-testing skills this repo's real paths, commands, backend (NestJS and its ORM, or Strapi), API layering, test setup and known debt. Use when the user asks to create, generate, update or check the project profile, when setting up those skills in a new repo, or when either skill finds no profile.
+description: Create or refresh a repository's project profile — the AGENTS.md block that tells the data-layer and fullstack-testing skills this repo's real paths, commands, backend (NestJS and its ORM, or Strapi), API layering, test setup and known debt. Use when the user asks to create, generate, update or check the project profile, when setting up those skills in a new repo, or when either skill finds no profile.
 ---
 
 # Project profile
@@ -22,8 +22,8 @@ merely filled in.
    It finds the package manager and workspaces, NestJS APIs and their ORM (Prisma:
    version, generator, client import, driver adapter, extensions on `PrismaService`;
    TypeORM: data source, migrations), Strapi APIs and their major version, test
-   runners and commands, the integration harness, TanStack Query files (QueryClient,
-   key factory, the API entry point, frontend services, feature hooks), layering debt
+   runners and commands, the integration harness, the data-fetching library (TanStack Query, SWR
+   or RTK Query) and its files (cache defaults, key or tag factory, the API entry point, frontend services, feature hooks), layering debt
    (hooks calling the HTTP layer, components skipping hooks, `renderHook` tests of
    feature hooks), third-party SDKs per API and the files importing them, Playwright,
    the Postgres image, Node local vs CI, CI workflows, and
@@ -43,8 +43,8 @@ merely filled in.
 
 2. **Verify every detected line** against the repo before writing. The detector reads
    by pattern and can pick the wrong file. Open each path it names and check that it is
-   the real one (e.g. the QueryClient with production `defaultOptions`, not a test
-   helper). Check each command exists in that workspace's `package.json`.
+   the real one (e.g. the `QueryClient`, `SWRConfig` or `createApi` with the production
+   defaults, not a test helper). Check each command exists in that workspace's `package.json`.
 
 3. **Write.** `node <this skill>/scripts/detect-profile.mjs . --write` inserts the block
    into `AGENTS.md`, or replaces the existing block (`--file <path>` for another file).

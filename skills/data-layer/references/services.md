@@ -25,9 +25,9 @@ export const tasksService = {
 - **An object, not loose exports.** Component tests mock the module once
   (`vi.mock('.../tasks.service')`) and assert `tasksService.list` calls; a stable
   object keeps that mock target the same as functions are added.
-- **Plain async functions.** No React, no TanStack Query, no toasts, no navigation, no
-  translated messages. A service is callable from a script, a loader or a test with
-  nothing mounted.
+- **Plain async functions.** No React, no data-fetching library (TanStack Query, SWR,
+  RTK Query), no toasts, no navigation, no translated messages. A service is callable
+  from a script, a loader or a test with nothing mounted.
 - **Imports:** `@lib/api/client`, `@lib/api/*` helpers (`bulkDelete`), shared types. Never
   a hook, a component, or another feature's hooks. Calling another service is fine when
   one operation needs two requests.

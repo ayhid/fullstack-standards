@@ -1,29 +1,19 @@
 /**
- * Centralised, hierarchical query keys: [root, operation, ...params].
+ * Centralised, hierarchical cache keys: [root, operation, ...params].
+ * Used as-is by TanStack Query (`queryKey`) and SWR (the `useSWR` key).
+ * RTK Query uses tags instead: `rtk-query/tags.ts`.
  *
  * Invalidate `queryKeys.<resource>.all` after any write; prefix matching then
  * refreshes every list, detail and scoped variant of that resource.
  */
 
-export interface ListParams {
-  page?: number;
-  pageSize?: number;
-  search?: string;
-  sortBy?: string;
-  order?: 'ASC' | 'DESC';
-}
+import type {
+  ListParams,
+  ProjectTaskFilters,
+  TaskListParams,
+} from './list-params';
 
-export interface TaskListParams extends ListParams {
-  status?: string;
-  assigneeId?: number;
-}
-
-/** Everything `useProjectTasks` puts on the URL — mirrored into its key. */
-export interface ProjectTaskFilters {
-  page?: number;
-  pageSize?: number;
-  status?: string;
-}
+export type { ListParams, ProjectTaskFilters, TaskListParams };
 
 export const queryKeys = {
   customers: {

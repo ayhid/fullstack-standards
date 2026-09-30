@@ -23,7 +23,7 @@ const FRONTEND_DEFAULTS = {
   services: ['**/services/**', '**/*.service.ts'],
   apiClient: 'lib/api/client.ts',
   apiLib: ['lib/api/**'],
-  renderFunctions: ['render', 'renderWithClient'],
+  renderFunctions: ['render', 'renderWithDataLayer', 'renderWithClient'],
 };
 
 const API_DEFAULTS = {

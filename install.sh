@@ -11,6 +11,14 @@ targets=("$HOME/.claude/skills" "$HOME/.agents/skills")
 
 for target in "${targets[@]}"; do
   mkdir -p "$target"
+
+  # Links into this repo whose skill was renamed or removed.
+  for link in "$target"/*; do
+    if [[ -L "$link" && ! -e "$link" && "$(readlink "$link")" == "$repo/skills/"* ]]; then
+      rm "$link" && echo "removed  $link (skill no longer exists)"
+    fi
+  done
+
   for skill in "$repo"/skills/*/; do
     name="$(basename "$skill")"
     link="$target/$name"

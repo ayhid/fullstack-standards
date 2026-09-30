@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Detect a repo's stack and print the project profile block that the
- * `tanstack-query-data-layer` and `fullstack-testing` skills read.
+ * `data-layer` and `fullstack-testing` skills read.
  *
  *   node detect-profile.mjs [repoRoot]            print the block (read-only)
  *   node detect-profile.mjs [repoRoot] --json     print the raw detection
@@ -291,28 +291,77 @@ function detectApi(ws) {
 
 // ─── frontend ────────────────────────────────────────────────────────────────
 
+// The server-state libraries the `data-layer` skill has an adapter for, in
+// detection order. `imports` finds the files using it; `cache` the configured
+// cache; `inlineKey` counts keys typed at the call site.
+const DATA_LIBRARIES = [
+  {
+    id: 'tanstack-query',
+    name: 'TanStack Query',
+    dep: '@tanstack/react-query',
+    imports: /from ['"]@tanstack\/react-query['"]/,
+    cache: [/new QueryClient\(\s*{[\s\S]*defaultOptions/, /new QueryClient\(/],
+    cacheLabel: 'QueryClient defaults',
+    inlineKey: /queryKey:\s*\[/g,
+    inlineKeyLabel: '`queryKey: [...]` arrays',
+  },
+  {
+    id: 'swr',
+    name: 'SWR',
+    dep: 'swr',
+    imports: /from ['"]swr(\/[\w-]+)?['"]/,
+    cache: [/export const swrConfig\b/, /<SWRConfig[\s\S]*value=/],
+    cacheLabel: 'SWRConfig defaults',
+    inlineKey: /\b(useSWR|useSWRInfinite|useSWRMutation|mutate)\(\s*(\[|['"`])/g,
+    inlineKeyLabel: '`useSWR`/`mutate` literal keys',
+  },
+  {
+    id: 'rtk-query',
+    name: 'RTK Query',
+    dep: '@reduxjs/toolkit',
+    imports: /from ['"]@reduxjs\/toolkit\/query(\/react)?['"]|\.injectEndpoints\(/,
+    cache: [/\bcreateApi\(/],
+    cacheLabel: 'createApi slice',
+    inlineKey: /(providesTags|invalidatesTags):[^\n]*['"][A-Z]\w*['"]/g,
+    inlineKeyLabel: 'string tag types in `providesTags`/`invalidatesTags`',
+  },
+];
+
+/** The workspace's data library, or null. RTK Query needs `createApi` in source. */
+function dataLibraryOf(ws) {
+  return (
+    DATA_LIBRARIES.find(
+      (lib) =>
+        hasDep(ws, lib.dep) &&
+        (lib.id !== 'rtk-query' || grepFiles(walk(ws.dir, 7), /\bcreateApi\(/).length > 0),
+    ) ?? null
+  );
+}
+
 function detectFrontend(ws) {
   const files = walk(ws.dir, 7);
+  const lib = dataLibraryOf(ws);
   const first = (re) => {
     const hit = grepFiles(files, re)[0];
     return hit && rel(hit);
   };
   // Hooks: the `features/<x>/hooks` layout, else the folder holding the most
-  // non-test files that import TanStack Query.
-  const queryFiles = grepFiles(files, /from ['"]@tanstack\/react-query['"]/);
+  // non-test files that import the data library.
+  const queryFiles = grepFiles(files, lib.imports);
   const perFeature = queryFiles.find((f) => /features\/[^/]+\/hooks\//.test(f));
   const byDir = new Map();
   for (const f of queryFiles) byDir.set(path.dirname(f), (byDir.get(path.dirname(f)) ?? 0) + 1);
   const busiest = [...byDir.entries()].sort((a, b) => b[1] - a[1])[0];
   const featureHooks = perFeature
     ? rel(path.dirname(perFeature)).replace(/features\/[^/]+\/hooks$/, 'features/<feature>/hooks')
-    : busiest && `${rel(busiest[0])} (${busiest[1]} files using TanStack Query)`;
+    : busiest && `${rel(busiest[0])} (${busiest[1]} files using ${lib.name})`;
 
   // Keys: one central factory, or per-hook `<resource>Keys` factories.
   const perHookKeyFiles = grepFiles(files, /export const [a-z]\w*Keys\s*=\s*{/);
   const inlineKeys = files
     .filter((f) => isSource(f) && !isTest(f))
-    .reduce((n, f) => n + ((read(f) ?? '').match(/queryKey:\s*\[/g) ?? []).length, 0);
+    .filter((f) => !/(^|\/)lib\/api\/tags\.ts$/.test(f))
+    .reduce((n, f) => n + ((read(f) ?? '').match(lib.inlineKey) ?? []).length, 0);
 
   // Layering: component → hook → service → one API entry point.
   const appFiles = files.filter((f) => isSource(f) && !isTest(f));
@@ -368,9 +417,13 @@ function detectFrontend(ws) {
     name: ws.pkg.name,
     dir: rel(ws.dir),
     bundler: hasDep(ws, 'vite') ? 'Vite' : hasDep(ws, 'next') ? 'Next.js' : TODO,
-    tanstackQuery: installedVersion(ws, '@tanstack/react-query'),
-    queryClient: first(/new QueryClient\(\s*{[\s\S]*defaultOptions/) ?? first(/new QueryClient\(/),
-    queryKeys: first(/export const (queryKeys|keys)\b/),
+    dataLibrary: lib.id,
+    dataLibraryName: lib.name,
+    dataLibraryVersion: installedVersion(ws, lib.dep),
+    cacheLabel: lib.cacheLabel,
+    cacheConfig: lib.cache.map(first).find(Boolean),
+    queryKeys: first(lib.id === 'rtk-query' ? /export const tagTypes\b/ : /export const (queryKeys|keys)\b/),
+    inlineKeyLabel: lib.inlineKeyLabel,
     perHookKeyFactories: perHookKeyFiles.length,
     perHookKeyDir: perHookKeyFiles[0] && rel(path.dirname(perHookKeyFiles[0])),
     inlineKeys,
@@ -472,7 +525,7 @@ const apis = [
   ...workspaces.filter((ws) => hasDep(ws, '@strapi/strapi')).map(detectStrapi),
 ];
 const frontends = workspaces
-  .filter((ws) => hasDep(ws, '@tanstack/react-query'))
+  .filter((ws) => dataLibraryOf(ws))
   .map(detectFrontend);
 const detection = {
   root,
@@ -550,21 +603,21 @@ function renderFrontend(fe) {
   return [
     `**Frontend — \`${fe.name}\` (\`${fe.dir}\`)**`,
     '',
-    `- ${fe.bundler} + TanStack Query ${v(fe.tanstackQuery)}`,
-    `- QueryClient defaults: ${code(fe.queryClient)}`,
-    `- Query key factory: ${
+    `- ${fe.bundler} + ${fe.dataLibraryName} ${v(fe.dataLibraryVersion)} (\`data-layer/references/adapters/${fe.dataLibrary}.md\`)`,
+    `- ${fe.cacheLabel}: ${code(fe.cacheConfig)}`,
+    `- ${fe.dataLibrary === 'rtk-query' ? 'Tag factory' : 'Cache key factory'}: ${
       fe.queryKeys
         ? code(fe.queryKeys)
         : fe.perHookKeyFactories
           ? `per-hook \`<resource>Keys\` factories (${fe.perHookKeyFactories} files, e.g. in ${code(fe.perHookKeyDir)}), no central factory`
-          : 'none found — create one from `tanstack-query-data-layer/templates/query-keys.ts`'
-    }${fe.inlineKeys ? `; ⚠️ ${fe.inlineKeys} inline \`queryKey: [...]\` arrays outside tests` : ''}`,
+          : `none found — create one from \`data-layer/templates/${fe.dataLibrary === 'rtk-query' ? 'rtk-query/tags.ts' : 'query-keys.ts'}\``
+    }${fe.inlineKeys ? `; ⚠️ ${fe.inlineKeys} inline ${fe.inlineKeyLabel} outside tests` : ''}`,
     `- API entry point: ${
       fe.entryPoint
         ? code(fe.entryPoint)
         : fe.legacyHttpClient
-          ? `none — multi-function HTTP helpers in ${code(fe.legacyHttpClient)}; migrate to one \`apiClient.request\` (\`tanstack-query-data-layer/templates/api-client.ts\`)`
-          : `${TODO} — none found; create it from \`tanstack-query-data-layer/templates/api-client.ts\``
+          ? `none — multi-function HTTP helpers in ${code(fe.legacyHttpClient)}; migrate to one \`apiClient.request\` (\`data-layer/templates/api-client.ts\`)`
+          : `${TODO} — none found; create it from \`data-layer/templates/api-client.ts\``
     }`,
     `- Frontend services: ${fe.services ? code(fe.services) : 'none found — hooks must call services, not the HTTP layer'}`,
     `- Feature hooks: ${code(fe.featureHooks)}`,
@@ -631,7 +684,7 @@ function renderBlock(manual) {
     START,
     '## Project profile',
     '',
-    'Read by the `tanstack-query-data-layer` and `fullstack-testing` skills; it wins',
+    'Read by the `data-layer` and `fullstack-testing` skills; it wins',
     'over them wherever they disagree. Generated by `project-profile` — re-run it',
     'after stack changes; only the manual section below is preserved.',
     '',

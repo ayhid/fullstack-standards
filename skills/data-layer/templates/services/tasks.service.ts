@@ -4,12 +4,12 @@
  * The only layer that knows the API's paths, methods and wire format. Every
  * function is one (or a few) `apiClient.request` calls plus the mapping from
  * the wire shape to the domain types the rest of the app uses. No React, no
- * TanStack Query: hooks call these, components never do.
+ * data-fetching library: hooks call these, components never do.
  */
 
 import { apiClient } from '@lib/api/client';
 import { bulkDelete, type BulkDeleteResult } from '@lib/api/bulk-delete';
-import type { TaskListParams } from '@lib/api/query-keys';
+import type { TaskListParams } from '@lib/api/list-params';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Domain types — prefer the shared-types wire contract when there is one

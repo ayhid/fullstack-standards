@@ -1,6 +1,6 @@
 ---
 name: fullstack-testing
-description: Testing conventions for a Vite + React + TanStack Query frontend talking to any REST backend (NestJS or Strapi), a NestJS + Postgres API on any ORM (TypeORM and Prisma adapters included), and a Playwright E2E suite — which layer a test belongs in, every component tested by rendering it with the frontend service mocked (hooks covered that way, never tested alone), services tested against the single API entry point, third-party services (Brevo, Stripe, S3…) always mocked at their port and never tested themselves, the real-Postgres integration harness, typed factories, and Playwright rules (route mocking, worker-unique data, web-first waits). Use before writing, changing, or debugging any test, or when deciding what coverage a fix needs.
+description: Testing conventions for a Vite + React frontend on TanStack Query, SWR or RTK Query, talking to any REST backend (NestJS or Strapi), a NestJS + Postgres API on any ORM (TypeORM and Prisma adapters included), and a Playwright E2E suite — which layer a test belongs in, every component tested by rendering it with the frontend service mocked (hooks covered that way, never tested alone), services tested against the single API entry point, third-party services (Brevo, Stripe, S3…) always mocked at their port and never tested themselves, the real-Postgres integration harness, typed factories, and Playwright rules (route mocking, worker-unique data, web-first waits). Use before writing, changing, or debugging any test, or when deciding what coverage a fix needs.
 ---
 
 # Full-stack testing
@@ -43,7 +43,7 @@ mocked browser spec with the API spec's work.
 3. **Seed with typed factories, never shared JSON fixtures.** Never assert against a
    generated literal; assert against the created entity's own field.
 4. **Every component has a test that renders it** — whether or not it uses a hook. The
-   component is the unit: render it with a real `QueryClient` and the feature's
+   component is the unit: render it with a real, fresh cache (`renderWithDataLayer`) and the feature's
    **service module mocked**, and for every branch assert what the user sees and which
    service function ran, with which arguments and how often. Hooks are covered that
    way and get **no tests of their own** (no `renderHook`, no test file under
@@ -96,6 +96,6 @@ mocked browser spec with the API spec's work.
 | `templates/api-integration/core/`        | ORM-free harness: container, global setup/teardown, truncate, URL guard |
 | `templates/api-integration/typeorm/`     | TypeORM adapter: migrations, data source, module, factories, example spec |
 | `templates/api-integration/prisma/`      | Prisma adapter: migrate deploy, client, module, factories, example spec |
-| `templates/frontend/*`                   | `renderWithClient`, component specs (invalidation, form and list branches, bulk delete), service spec, query-key and API-layering guards |
+| `templates/frontend/*`                   | `test-utils/<library>.tsx` (`renderWithDataLayer`, one per data-fetching library), component specs (invalidation, form and list branches, bulk delete), service spec, cache-key and API-layering guards |
 | `templates/third-party/*`                | Mailer port, Brevo adapter + spec, consumer service + spec, SDK import guard |
 | `templates/e2e/*`                        | Worker-scoped names, catch-all route guard               |

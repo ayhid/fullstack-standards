@@ -52,9 +52,21 @@ Templates: `templates/frontend/tasks-list-invalidation.test.tsx`, `task-form.tes
   vi.mock('@features/tasks/services/tasks.service', () => ({ tasksService }));
   ```
 
-  Never mock `@tanstack/react-query`, the hook module, or `@lib/api/client` here.
-- **Render with `renderWithClient(ui, client)`**, a fresh client per test. Turn `retry`
-  off for queries and mutations (`createTestQueryClient`).
+  Never mock the data-fetching library (`@tanstack/react-query`, `swr`, RTK Query), the
+  hook module, or `@lib/api/client` here.
+- **Render with `renderWithDataLayer(ui, dataLayer)`** from `src/test/data-layer-test-utils.tsx`,
+  copied from `templates/frontend/test-utils/<library>.tsx`. Every library's version
+  exports the same surface, so component tests do not change with the library:
+
+  | Export                            | What it is                                             |
+  | --------------------------------- | ------------------------------------------------------ |
+  | `createTestDataLayer()`           | a fresh cache, retries off — the default               |
+  | `createProductionLikeDataLayer()` | the production cache settings, retries off             |
+  | `renderWithDataLayer(ui, layer?)` | `render` inside the layer's providers; reuse one layer across renders to model unmount/remount |
+  | `layer.cachedUnder(root)`         | cache entries under a root (`queryKeys.tasks.all`; RTK Query: `'Task'`) |
+
+  A fresh layer per test: TanStack Query a new `QueryClient`, SWR a new `Map` cache
+  provider, RTK Query a new store.
 - **Cover every branch of the hooks the component uses**, each as a service-call
   assertion plus what the user sees:
 
@@ -71,15 +83,18 @@ Templates: `templates/frontend/tasks-list-invalidation.test.tsx`, `task-form.tes
 
   Use `toHaveBeenCalledTimes` along with `toHaveBeenCalledWith`: a double fetch or a
   retried write is a bug the arguments alone do not show.
-- **Reproduce cache bugs with the production defaults** (`createProductionLikeQueryClient`,
-  `staleTime` of minutes). With `staleTime: 0` every remount refetches and the "stale
-  list after create" bug cannot appear.
+- **Reproduce cache bugs with the production defaults** (`createProductionLikeDataLayer`:
+  TanStack `staleTime` of minutes, SWR's `dedupingInterval`, RTK Query's
+  `refetchOnMountOrArgChange`). With a zero freshness window every remount refetches and
+  the "stale list after create" bug cannot appear.
 - **Model the real lifecycle**: the list page **unmounts** while the form page creates,
   then **remounts** after navigation. Test that path and the "list stayed mounted" path.
 - Components that share state on one screen render **in one root**, as the app does.
-- Assert invalidation by outcome (the service is called again and the new row shows)
-  and, for resources with no component on screen, by
-  `vi.spyOn(client, 'invalidateQueries')` called with `queryKeys.<resource>.all`.
+- Assert invalidation by outcome: the service is called again and the new row shows.
+  For another resource the write changes (a project's task counter), render the
+  component that shows it in the same root, as the page does, mock its service too, and
+  assert that service is called again. Do not spy on the library's invalidation call:
+  it pins one library's API and says nothing about what the user sees.
 - Components import domain types from the hook file (which re-exports them), never
   from the service.
 

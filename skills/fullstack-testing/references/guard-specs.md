@@ -26,8 +26,9 @@ with a pointer to the rule. Use one when a fix has already regressed once by cop
 ## Good candidates
 
 - Test-file naming (a mis-suffixed integration spec runs in no project).
-- Every `useQuery`/`invalidateQueries` key comes from `queryKeys` (no array literal as
-  `queryKey`).
+- Every cache key comes from `queryKeys` (RTK Query: every tag from `tags`): no inline
+  key in `queryKey`, a `useSWR`/`mutate` key, or `providesTags`/`invalidatesTags`. →
+  `templates/frontend/cache-keys-contract.test.ts`
 - The API layering: components import no service and no client, hooks import no client,
   only services import the client, only the client calls `fetch`, and no test
   `renderHook`s a feature hook. → `templates/frontend/api-layering-contract.test.ts`

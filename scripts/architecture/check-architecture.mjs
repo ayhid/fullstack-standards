@@ -174,7 +174,7 @@ if (mode === '--pre') {
         permissionDecision: 'deny',
         permissionDecisionReason:
           `This change breaks the project's architecture rules (fullstack-standards):\n${format(file, findings)}\n` +
-          'Rewrite it to follow the rule. See the tanstack-query-data-layer and fullstack-testing skills.',
+          'Rewrite it to follow the rule. See the data-layer and fullstack-testing skills.',
       },
     }));
   }

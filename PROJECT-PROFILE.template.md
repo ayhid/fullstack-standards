@@ -18,6 +18,6 @@ reference-data tables go.
 It covers: package manager and workspaces; per NestJS API the ORM (version, client
 import, driver adapter, DB provider and its extensions), migration commands, test
 commands, integration harness and third-party SDKs (with their importers); per Strapi API its major version and envelope; per
-frontend the TanStack Query version, QueryClient, key factory, the API entry point,
+frontend the data-fetching library (TanStack Query, SWR or RTK Query) and its version, cache defaults, key or tag factory, the API entry point,
 frontend services, feature hooks, layering debt and test setup; Playwright config, specs and command; the
 Postgres image, Node local vs CI, CI workflows, and build-cache behaviour for `test`.

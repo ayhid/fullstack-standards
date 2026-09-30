@@ -10,13 +10,10 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TasksListPage } from '@features/tasks/components/TasksListPage';
-import { queryKeys } from '@lib/api/query-keys';
-import {
-  createTestQueryClient,
-  renderWithClient,
-} from '@/test/query-test-utils';
+import { ProjectHeader } from '@features/projects/components/ProjectHeader';
+import { renderWithDataLayer } from '@/test/data-layer-test-utils';
 
-const { tasksService } = vi.hoisted(() => ({
+const { tasksService, projectsService } = vi.hoisted(() => ({
   tasksService: {
     list: vi.fn(),
     get: vi.fn(),
@@ -25,9 +22,13 @@ const { tasksService } = vi.hoisted(() => ({
     remove: vi.fn(),
     removeMany: vi.fn(),
   },
+  projectsService: { get: vi.fn() },
 }));
 
 vi.mock('@features/tasks/services/tasks.service', () => ({ tasksService }));
+vi.mock('@features/projects/services/projects.service', () => ({ projectsService }));
+
+const PROJECT = { id: 7, name: 'Launch', taskCount: 3 };
 
 const ROWS = [1, 2, 3].map(id => ({
   id,
@@ -50,21 +51,28 @@ describe('TasksListPage bulk delete', () => {
 
   it('deletes the selected ids and reports a partial failure without failing the action', async () => {
     const user = userEvent.setup();
-    const client = createTestQueryClient();
-    const invalidate = vi.spyOn(client, 'invalidateQueries');
     tasksService.list.mockResolvedValue(page(ROWS));
+    projectsService.get.mockResolvedValue(PROJECT);
     tasksService.removeMany.mockResolvedValue({
       requestedIds: [1, 2, 3],
       deletedIds: [1, 3],
       failures: [{ id: 2, error: new Error('HTTP 500') }],
     });
-    renderWithClient(<TasksListPage />, client);
+    // The list page shows the project header with its task counter.
+    renderWithDataLayer(
+      <>
+        <ProjectHeader projectId={7} />
+        <TasksListPage />
+      </>
+    );
     await screen.findByText('Task 1');
+    await screen.findByText(PROJECT.name);
 
     for (const row of ROWS) {
       await user.click(screen.getByRole('checkbox', { name: `Select ${row.title}` }));
     }
     tasksService.list.mockResolvedValue(page([ROWS[1]]));
+    projectsService.get.mockResolvedValue({ ...PROJECT, taskCount: 1 });
     await user.click(screen.getByRole('button', { name: 'Delete selected' }));
 
     expect(await screen.findByRole('status')).toHaveTextContent('Deleted 2 of 3 tasks.');
@@ -73,12 +81,12 @@ describe('TasksListPage bulk delete', () => {
     // The list and the project counters refresh on partial failure too.
     await waitFor(() => expect(screen.queryByText('Task 1')).not.toBeInTheDocument());
     expect(tasksService.list).toHaveBeenCalledTimes(2);
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.projects.all });
+    await waitFor(() => expect(projectsService.get).toHaveBeenCalledTimes(2));
   });
 
   it('does not call the service when nothing is selected', async () => {
     tasksService.list.mockResolvedValue(page(ROWS));
-    renderWithClient(<TasksListPage />);
+    renderWithDataLayer(<TasksListPage />);
     await screen.findByText('Task 1');
 
     expect(screen.getByRole('button', { name: 'Delete selected' })).toBeDisabled();

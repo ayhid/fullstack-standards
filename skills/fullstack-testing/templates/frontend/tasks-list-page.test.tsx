@@ -13,9 +13,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TasksListPage } from '@features/tasks/components/TasksListPage';
 import { ApiError } from '@lib/api/client';
 import {
-  createProductionLikeQueryClient,
-  renderWithClient,
-} from '@/test/query-test-utils';
+  createProductionLikeDataLayer,
+  renderWithDataLayer,
+} from '@/test/data-layer-test-utils';
 
 const { tasksService } = vi.hoisted(() => ({
   tasksService: {
@@ -47,7 +47,7 @@ describe('TasksListPage', () => {
 
   it('asks for the first page with the default page size', async () => {
     tasksService.list.mockResolvedValue(page([TODO, DONE]));
-    renderWithClient(<TasksListPage />);
+    renderWithDataLayer(<TasksListPage />);
 
     expect(await screen.findByText('Write spec')).toBeInTheDocument();
     expect(screen.getByText('Ship it')).toBeInTheDocument();
@@ -61,7 +61,7 @@ describe('TasksListPage', () => {
     tasksService.list.mockImplementation(async (params: { status?: string }) =>
       page(params.status === 'done' ? [DONE] : [TODO, DONE])
     );
-    renderWithClient(<TasksListPage />);
+    renderWithDataLayer(<TasksListPage />);
     await screen.findByText('Write spec');
 
     await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'done');
@@ -83,8 +83,8 @@ describe('TasksListPage', () => {
     tasksService.list.mockImplementation(async (params: { status?: string }) =>
       page(params.status === 'done' ? [DONE] : [TODO, DONE])
     );
-    // Production defaults: a long staleTime is what makes the cache observable.
-    renderWithClient(<TasksListPage />, createProductionLikeQueryClient());
+    // Production defaults: a long freshness window makes the cache observable.
+    renderWithDataLayer(<TasksListPage />, createProductionLikeDataLayer());
     await screen.findByText('Write spec');
 
     const status = screen.getByRole('combobox', { name: 'Status' });
@@ -101,7 +101,7 @@ describe('TasksListPage', () => {
 
   it('shows an error the user can read when the list fails to load', async () => {
     tasksService.list.mockRejectedValue(new ApiError(500, null));
-    renderWithClient(<TasksListPage />);
+    renderWithDataLayer(<TasksListPage />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Could not load tasks.'

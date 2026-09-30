@@ -9,13 +9,15 @@ architecture:
   the rules are ORM-neutral, and the ORM-specific parts (service template, test harness
   adapter, migration commands) sit in per-ORM folders. Supporting another ORM means
   adding one adapter folder (see `skills/fullstack-testing/references/api-integration.md`).
-- **Frontend:** Vite + React SPA, TanStack Query 5, Vitest + React Testing Library
+- **Frontend:** Vite + React SPA on a server-state library — **TanStack Query 5, SWR 2 or
+  RTK Query**; the rules are library-neutral, with one adapter per library
+  (`skills/data-layer/references/adapters/`). Vitest + React Testing Library
 - **E2E:** Playwright
 - A monorepo with a shared-types package (optional)
 
 | Skill                                                          | Use it when                                                              |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| [`tanstack-query-data-layer`](skills/tanstack-query-data-layer) | Adding or changing server state: the component → hook → frontend service → `apiClient.request` layering, query keys, mutations, backend services |
+| [`data-layer`](skills/data-layer) | Adding or changing server state with TanStack Query, SWR or RTK Query: the component → hook → frontend service → `apiClient.request` layering, cache keys, mutations and invalidation, backend services |
 | [`fullstack-testing`](skills/fullstack-testing)                 | Writing or changing any test, on any layer (hooks only through components, services against the entry point, third-party services mocked at their adapter) |
 | [`project-profile`](skills/project-profile)                     | Creating or refreshing a repo's profile block in `AGENTS.md`             |
 

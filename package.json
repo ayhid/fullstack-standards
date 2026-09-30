@@ -2,7 +2,7 @@
   "name": "fullstack-standards",
   "private": true,
   "type": "module",
-  "description": "Skills and Claude Code hooks for React + TanStack Query frontends on REST backends",
+  "description": "Skills and Claude Code hooks for React frontends (TanStack Query, SWR or RTK Query) on REST backends",
   "scripts": {
     "test": "node --test 'scripts/**/*.test.mjs'"
   },
