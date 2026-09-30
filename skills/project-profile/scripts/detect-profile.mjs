@@ -248,6 +248,28 @@ function detectFrontend(ws) {
     .filter((f) => isSource(f) && !isTest(f))
     .reduce((n, f) => n + ((read(f) ?? '').match(/queryKey:\s*\[/g) ?? []).length, 0);
 
+  // Layering: component → hook → service → one API entry point.
+  const appFiles = files.filter((f) => isSource(f) && !isTest(f));
+  const perFeatureService = appFiles.find((f) => /features\/[^/]+\/services\/[^/]+\.service\.tsx?$/.test(f));
+  const serviceFiles = appFiles.filter((f) => /\.service\.tsx?$/.test(f) || /\/services\//.test(f));
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const services = perFeatureService
+    ? `${rel(path.dirname(perFeatureService)).replace(/features\/[^/]+\/services$/, 'features/<feature>/services')} (${plural(serviceFiles.length, 'file')})`
+    : serviceFiles[0] && `${rel(path.dirname(serviceFiles[0]))} (${plural(serviceFiles.length, 'service file')})`;
+  const transportImport = /from\s+['"][^'"]*(lib\/api\/(client|http)|api-client|http-client)['"]|\bapi(Get|Post|Put|Patch|Delete)\s*\(|\bfetch\s*\(/;
+  const serviceImport = /from\s+['"][^'"]*(\/services\/|\.service)['"]/;
+  const inDir = (f, re) => re.test(rel(f));
+  const layering = {
+    hooksCallingTransport: appFiles.filter((f) => inDir(f, /(^|\/)hooks\//) && transportImport.test(read(f) ?? '')).length,
+    componentsSkippingHooks: appFiles.filter(
+      (f) => inDir(f, /(^|\/)(components|pages)\//) &&
+        (serviceImport.test(read(f) ?? '') || transportImport.test(read(f) ?? '')),
+    ).length,
+    hookTests: files.filter(
+      (f) => isTest(f) && /\brenderHook\s*\(/.test(read(f) ?? '') && /from\s+['"][^'"]*\/hooks\//.test(read(f) ?? ''),
+    ).length,
+  };
+
   const vitestConfig = files.find((f) => /vitest\.config\.[cm]?[jt]s$/.test(f));
   return {
     name: ws.pkg.name,
@@ -259,8 +281,12 @@ function detectFrontend(ws) {
     perHookKeyFactories: perHookKeyFiles.length,
     perHookKeyDir: perHookKeyFiles[0] && rel(path.dirname(perHookKeyFiles[0])),
     inlineKeys,
-    httpClient: first(/export (async )?function api(Get|Fetch|Request)\b|export const api(Get|Client)\b/),
+    entryPoint: first(/export const apiClient\b|export (async )?function (request|apiRequest)\b/),
+    // The older multi-function surface (apiGet/apiPost/…), to migrate to one `request`.
+    legacyHttpClient: first(/export (async )?function api(Get|Post|Fetch)\b|export const apiGet\b/),
     featureHooks,
+    services,
+    layering,
     tests: {
       runner: hasDep(ws, 'vitest') ? 'vitest' : hasDep(ws, 'jest') ? 'jest' : TODO,
       command: command(ws, findScript(ws, ['test:unit', 'test'])),
@@ -338,7 +364,20 @@ function detectEnvironment() {
 
 // ─── assemble ────────────────────────────────────────────────────────────────
 
-const apis = workspaces.filter((ws) => hasDep(ws, '@nestjs/core')).map(detectApi);
+function detectStrapi(ws) {
+  return {
+    name: ws.pkg.name,
+    dir: rel(ws.dir),
+    framework: 'Strapi',
+    version: installedVersion(ws, '@strapi/strapi'),
+    tests: { unit: command(ws, findScript(ws, ['test:unit', 'test'])) },
+  };
+}
+
+const apis = [
+  ...workspaces.filter((ws) => hasDep(ws, '@nestjs/core')).map(detectApi),
+  ...workspaces.filter((ws) => hasDep(ws, '@strapi/strapi')).map(detectStrapi),
+];
 const frontends = workspaces
   .filter((ws) => hasDep(ws, '@tanstack/react-query'))
   .map(detectFrontend);
@@ -359,6 +398,15 @@ const v = (value) => (value === undefined || value === null || value === '' ? TO
 const code = (value) => (value && value !== TODO ? `\`${value}\`` : TODO);
 
 function renderApi(api) {
+  if (api.framework === 'Strapi') {
+    return [
+      `**API — \`${api.name}\` (\`${api.dir}\`), Strapi ${v(api.version)}**`,
+      '',
+      `- REST API, ${major(api.version) >= 5 ? 'v5: `{ data, meta }` with flat entities keyed by `documentId`' : 'v4: `{ data: { id, attributes }, meta }` envelope'} — frontend services unwrap it; nothing past them sees the wire shape`,
+      `- Tests: ${code(api.tests.unit)}`,
+      '- The NestJS backend-service and integration-harness rules do not apply to this API',
+    ].join('\n');
+  }
   const o = api.orm;
   const lines = [`**API — \`${api.name}\` (\`${api.dir}\`)**`, ''];
   if (o.name === 'prisma') {
@@ -404,10 +452,27 @@ function renderFrontend(fe) {
           ? `per-hook \`<resource>Keys\` factories (${fe.perHookKeyFactories} files, e.g. in ${code(fe.perHookKeyDir)}), no central factory`
           : 'none found — create one from `tanstack-query-data-layer/templates/query-keys.ts`'
     }${fe.inlineKeys ? `; ⚠️ ${fe.inlineKeys} inline \`queryKey: [...]\` arrays outside tests` : ''}`,
-    `- HTTP client: ${code(fe.httpClient)}`,
+    `- API entry point: ${
+      fe.entryPoint
+        ? code(fe.entryPoint)
+        : fe.legacyHttpClient
+          ? `none — multi-function HTTP helpers in ${code(fe.legacyHttpClient)}; migrate to one \`apiClient.request\` (\`tanstack-query-data-layer/templates/api-client.ts\`)`
+          : `${TODO} — none found; create it from \`tanstack-query-data-layer/templates/api-client.ts\``
+    }`,
+    `- Frontend services: ${fe.services ? code(fe.services) : 'none found — hooks must call services, not the HTTP layer'}`,
     `- Feature hooks: ${code(fe.featureHooks)}`,
+    ...layeringDebt(fe.layering),
     `- Tests: ${fe.tests.runner} ${code(fe.tests.command)}${fe.tests.config ? `, config ${code(fe.tests.config)}` : ''}${fe.tests.tzUtc ? ', runs with `TZ=UTC`' : ''}`,
   ].join('\n');
+}
+
+function layeringDebt(l) {
+  const debt = [
+    l.hooksCallingTransport && `hook files calling the HTTP layer directly (should call a service): ${l.hooksCallingTransport}`,
+    l.componentsSkippingHooks && `component/page files importing a service or the HTTP layer (should use a hook): ${l.componentsSkippingHooks}`,
+    l.hookTests && `test files that \`renderHook\` a feature hook (test through a component): ${l.hookTests}`,
+  ].filter(Boolean);
+  return debt.map((d) => `  - ⚠️ ${d}`);
 }
 
 function renderE2e(e2e) {

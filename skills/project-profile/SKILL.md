@@ -1,6 +1,6 @@
 ---
 name: project-profile
-description: Create or refresh a repository's project profile — the AGENTS.md block that tells the tanstack-query-data-layer and fullstack-testing skills this repo's real paths, commands, ORM, test setup and known debt. Use when the user asks to create, generate, update or check the project profile, when setting up those skills in a new repo, or when either skill finds no profile.
+description: Create or refresh a repository's project profile — the AGENTS.md block that tells the tanstack-query-data-layer and fullstack-testing skills this repo's real paths, commands, backend (NestJS and its ORM, or Strapi), API layering, test setup and known debt. Use when the user asks to create, generate, update or check the project profile, when setting up those skills in a new repo, or when either skill finds no profile.
 ---
 
 # Project profile
@@ -21,10 +21,12 @@ merely filled in.
 
    It finds the package manager and workspaces, NestJS APIs and their ORM (Prisma:
    version, generator, client import, driver adapter, extensions on `PrismaService`;
-   TypeORM: data source, migrations), test runners and commands, the integration
-   harness, TanStack Query files (QueryClient, key factory, HTTP client, feature
-   hooks), Playwright, the Postgres image, Node local vs CI, CI workflows, and whether
-   Turbo caches `test`.
+   TypeORM: data source, migrations), Strapi APIs and their major version, test
+   runners and commands, the integration harness, TanStack Query files (QueryClient,
+   key factory, the API entry point, frontend services, feature hooks), layering debt
+   (hooks calling the HTTP layer, components skipping hooks, `renderHook` tests of
+   feature hooks), Playwright, the Postgres image, Node local vs CI, CI workflows, and
+   whether Turbo caches `test`.
 
 2. **Verify every detected line** against the repo before writing. The detector reads
    by pattern and can pick the wrong file. Open each path it names and check that it is
@@ -50,7 +52,9 @@ merely filled in.
 
 6. **Act on warnings.** Lines marked ⚠️ are real risks the detector found (Node major
    differs between local and CI; DB-backed specs with no harness while `DATABASE_URL`
-   points at a developer database). Report them to the user; do not silently fix them.
+   points at a developer database; files that break the component → hook → service →
+   entry point layering). Report them to the user; do not silently fix them. Layering
+   counts are debt to list in the manual section, not a reason to refactor unasked.
 
 7. Report what was written, what was corrected by hand, and any TODO left, with the
    reason.
