@@ -90,10 +90,14 @@ export class TasksService {
 
   // Anything a transaction calls takes `tx`, not the injected client —
   // otherwise it runs outside the transaction.
+  // Prisma has no row-lock API, so take it with raw SQL: a concurrent
+  // update/remove of the same task waits instead of reading the old projectId
+  // and moving its counter twice. Use the @@map table name if the model has one.
   private async findTaskOrThrow(
     tx: Prisma.TransactionClient,
     id: number,
   ): Promise<Task> {
+    await tx.$queryRaw`SELECT id FROM "Task" WHERE id = ${id} FOR UPDATE`;
     const task = await tx.task.findUnique({ where: { id } });
     if (!task) {
       throw new NotFoundException(`Task ${id} not found`);

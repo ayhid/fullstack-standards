@@ -88,8 +88,13 @@ export class TasksService {
   }
 
   // Anything a transaction calls takes the EntityManager, not the injected repo.
+  // The row lock makes a concurrent update/remove of the same task wait, so two
+  // requests can't both read the old projectId and move its counter twice.
   private async findTaskOrThrow(manager: EntityManager, id: number): Promise<Task> {
-    const task = await manager.findOne(Task, { where: { id } });
+    const task = await manager.findOne(Task, {
+      where: { id },
+      lock: { mode: 'pessimistic_write' },
+    });
     if (!task) {
       throw new NotFoundException(`Task ${id} not found`);
     }
