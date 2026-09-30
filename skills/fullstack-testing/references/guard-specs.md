@@ -7,7 +7,10 @@ with a pointer to the rule. Use one when a fix has already regressed once by cop
 ## How to write one
 
 1. **Parse with the TypeScript compiler, not grep.** `ts.createSourceFile(path, text,
-   ts.ScriptTarget.Latest, true)` needs no tsconfig. Comments are trivia and never
+   ts.ScriptTarget.Latest, true)` needs no tsconfig. It is the JS compiler API of
+   `typescript@5`; the native `typescript@7` package exports only its version, so a
+   project on 7 adds `typescript@5` (or an alias of it) as a dev dependency for the
+   guards. Comments are trivia and never
    appear in the tree, so prose that *mentions* a forbidden pattern cannot trip the
    guard. Hand-rolled comment strippers break on JSX text containing apostrophes and on
    regex literals.
@@ -25,6 +28,8 @@ with a pointer to the rule. Use one when a fix has already regressed once by cop
 - Test-file naming (a mis-suffixed integration spec runs in no project).
 - Every `useQuery`/`invalidateQueries` key comes from `queryKeys` (no array literal as
   `queryKey`).
-- No component imports the HTTP client directly.
+- The API layering: components import no service and no client, hooks import no client,
+  only services import the client, only the client calls `fetch`, and no test
+  `renderHook`s a feature hook. → `templates/frontend/api-layering-contract.test.ts`
 - No import from a removed UI library.
 - Forms use the shared validation mode / error-count helper.

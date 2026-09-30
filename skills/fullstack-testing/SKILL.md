@@ -1,6 +1,6 @@
 ---
 name: fullstack-testing
-description: Testing conventions for a NestJS + Postgres API on any ORM (TypeORM and Prisma adapters included), a Vite + React + TanStack Query frontend, and a Playwright E2E suite — which layer a test belongs in, the real-Postgres integration harness, typed factories, hook tests with a real QueryClient, and Playwright rules (route mocking, worker-unique data, web-first waits). Use before writing, changing, or debugging any test, or when deciding what coverage a fix needs.
+description: Testing conventions for a Vite + React + TanStack Query frontend talking to any REST backend (NestJS or Strapi), a NestJS + Postgres API on any ORM (TypeORM and Prisma adapters included), and a Playwright E2E suite — which layer a test belongs in, hooks tested only through components with the frontend service mocked, services tested against the single API entry point, the real-Postgres integration harness, typed factories, and Playwright rules (route mocking, worker-unique data, web-first waits). Use before writing, changing, or debugging any test, or when deciding what coverage a fix needs.
 ---
 
 # Full-stack testing
@@ -18,7 +18,9 @@ detector read-only (`project-profile/scripts/detect-profile.mjs .`) for the fact
 | API unit             | `*.spec.ts`                   | Jest                         | Pure logic: guards, policies, mappers, validation, branching  |
 | API integration      | `*.integration-spec.ts`       | Jest, **real Postgres**      | Anything that depends on the schema: queries, transactions, FKs, migrations |
 | API HTTP (optional)  | `test/**/*.e2e-spec.ts`       | Jest + supertest             | Database-free HTTP surface: guards, pipes, status codes       |
-| Frontend             | `*.test.tsx` / `*.spec.tsx`   | Vitest + RTL + jsdom         | Components, hooks, a11y                                       |
+| Frontend components  | `*.test.tsx`                  | Vitest + RTL + jsdom         | Components **and the hooks they use**, a11y; the feature service mocked |
+| Frontend services    | `*.service.test.ts`           | Vitest                       | The `apiClient.request` config each service sends, and its mapping |
+| Frontend API client  | `client.test.ts`              | Vitest, `fetch` stubbed      | Transport only: serialisation, retries, refresh, errors       |
 | Browser E2E          | `e2e/tests/**/*.spec.ts`      | Playwright                   | Cross-stack user journeys                                     |
 
 A rule provable in a unit spec does not belong in a journey. A query that depends on
@@ -40,8 +42,12 @@ mocked browser spec with the API spec's work.
    or from `prisma/schema.prisma` vs `@nestjs/typeorm`.
 3. **Seed with typed factories, never shared JSON fixtures.** Never assert against a
    generated literal; assert against the created entity's own field.
-4. **Hook tests use a real `QueryClient` and the real hook**; stub only the HTTP module.
-   → `references/frontend-vitest.md`
+4. **Never test a hook directly** (no `renderHook` on a feature hook). Test it through
+   a component: real `QueryClient`, real hook, the feature's **service module mocked**.
+   For every branch, assert which service function ran, with which arguments and how
+   often, and what the user sees. **Test services by mocking the single entry point**
+   (`apiClient.request`) and asserting the exact `{ method, path, query, body }` and the
+   mapped result. → `references/frontend-vitest.md`
 5. **Never stub a form field that carries `required`** in a test that asserts a submit
    happens; native validation blocks submit before React sees it. Assert
    `form.checkValidity()` or drive the real field.
@@ -72,12 +78,12 @@ mocked browser spec with the API spec's work.
 | ---------------------------------------- | ------------------------------------------------------- |
 | `references/api-unit.md`                 | Jest config traps, what a unit spec may stub            |
 | `references/api-integration.md`          | Harness design, isolation, factories, external Postgres |
-| `references/frontend-vitest.md`          | Setup file, hook tests, cache-bug reproductions, doubles |
+| `references/frontend-vitest.md`          | Component tests, service tests, cache bugs, doubles     |
 | `references/playwright.md`               | Auth, route mocking, worker-unique data, tags, HAR       |
 | `references/guard-specs.md`              | Enforcing architecture with specs                        |
 | `references/ci.md`                       | What CI should run and in which order                    |
 | `templates/api-integration/core/`        | ORM-free harness: container, global setup/teardown, truncate, URL guard |
 | `templates/api-integration/typeorm/`     | TypeORM adapter: migrations, data source, module, factories, example spec |
 | `templates/api-integration/prisma/`      | Prisma adapter: migrate deploy, client, module, factories, example spec |
-| `templates/frontend/*`                   | Test QueryClient wrapper, invalidation spec, mutation spec, query-key contract guard |
+| `templates/frontend/*`                   | `renderWithClient`, component specs (invalidation, form and list branches, bulk delete), service spec, query-key and API-layering guards |
 | `templates/e2e/*`                        | Worker-scoped names, catch-all route guard               |
