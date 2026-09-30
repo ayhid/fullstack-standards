@@ -3,7 +3,9 @@
 Reusable engineering guidelines, packaged as agent skills, for projects with this
 architecture:
 
-- **API:** NestJS + PostgreSQL, Jest, with **any ORM**. TypeORM and Prisma are covered;
+- **API:** any REST backend for the frontend rules — **NestJS or Strapi**; the frontend
+  does not depend on which. The backend rules and the integration harness cover
+  NestJS + PostgreSQL, Jest, with **any ORM**. TypeORM and Prisma are covered;
   the rules are ORM-neutral, and the ORM-specific parts (service template, test harness
   adapter, migration commands) sit in per-ORM folders. Supporting another ORM means
   adding one adapter folder (see `skills/fullstack-testing/references/api-integration.md`).
@@ -13,8 +15,8 @@ architecture:
 
 | Skill                                                          | Use it when                                                              |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| [`tanstack-query-data-layer`](skills/tanstack-query-data-layer) | Adding or changing server state: query keys, hooks, mutations, HTTP calls, backend services |
-| [`fullstack-testing`](skills/fullstack-testing)                 | Writing or changing any test, on any layer                               |
+| [`tanstack-query-data-layer`](skills/tanstack-query-data-layer) | Adding or changing server state: the component → hook → frontend service → `apiClient.request` layering, query keys, mutations, backend services |
+| [`fullstack-testing`](skills/fullstack-testing)                 | Writing or changing any test, on any layer (hooks only through components, services against the entry point) |
 | [`project-profile`](skills/project-profile)                     | Creating or refreshing a repo's profile block in `AGENTS.md`             |
 
 ## Install
