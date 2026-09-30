@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import type { EntityClassOrSchema } from '@nestjs/typeorm/dist/interfaces/entity-class-or-schema.type';
-import type { CanActivate, Provider, Type } from '@nestjs/common';
+import type { CanActivate, InjectionToken, Provider, Type } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 import { TEST_ENTITIES, testDataSourceOptions } from './test-data-source';
@@ -24,6 +24,12 @@ type IntegrationModuleOptions = {
    * only be replaced through the builder, never on the compiled module.
    */
   guardOverrides?: ReadonlyArray<[Type<CanActivate>, CanActivate]>;
+  /**
+   * Third-party ports replaced by mocks, e.g. `[[MAILER, mailerMock]]`. The
+   * real adapter is never built, so no spec reaches the provider or needs its
+   * credentials. Applied on the builder, before compile.
+   */
+  providerOverrides?: ReadonlyArray<[InjectionToken, unknown]>;
 };
 
 /**
@@ -47,6 +53,9 @@ export async function createIntegrationTestingModule(
 
   for (const [guard, stub] of options.guardOverrides ?? []) {
     builder.overrideGuard(guard).useValue(stub);
+  }
+  for (const [token, mock] of options.providerOverrides ?? []) {
+    builder.overrideProvider(token).useValue(mock);
   }
 
   return builder.compile();

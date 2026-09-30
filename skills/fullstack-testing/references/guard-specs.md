@@ -31,5 +31,7 @@ with a pointer to the rule. Use one when a fix has already regressed once by cop
 - The API layering: components import no service and no client, hooks import no client,
   only services import the client, only the client calls `fetch`, and no test
   `renderHook`s a feature hook. → `templates/frontend/api-layering-contract.test.ts`
+- Third-party SDKs are imported by their adapter only, and no spec `jest.mock`s one. →
+  `templates/third-party/third-party-imports.spec.ts`
 - No import from a removed UI library.
 - Forms use the shared validation mode / error-count helper.

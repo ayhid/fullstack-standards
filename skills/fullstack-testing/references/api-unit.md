@@ -8,7 +8,9 @@ is irrelevant to the rule under test).
 
 ## What a unit spec may stub
 
-- External clients (mailer, storage, payment, error tracker).
+- Third-party services, **at their port** (`{ provide: MAILER, useValue: mailer }`),
+  never by `jest.mock`-ing the SDK. Assert the call's params and the exceptions raised.
+  → `third-party-services.md`
 - Other services, when the rule under test is this service's branching.
 - **Not** the data layer, to prove data behaviour: no stubbed `Repository<T>` /
   `DataSource` / query builder (TypeORM), no `mockDeep<PrismaClient>()` or hand-built

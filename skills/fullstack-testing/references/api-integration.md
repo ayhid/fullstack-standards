@@ -89,8 +89,23 @@ test may not rely on data from a previous test, and identity sequences restart.
 - Co-locate: `src/tasks/tasks.service.integration-spec.ts`. Specs that belong to no
   single provider (migration replays) go under `test/integration/`.
 - Boot a **minimal** module with `createIntegrationTestingModule({ providers, controllers,
-  guardOverrides })`: real DB + only what is under test, so a service spec does not drag
-  in cache, schedulers or storage. Guard stubs go on the builder, before `compile()`.
+  guardOverrides, providerOverrides })`: real DB + only what is under test, so a service
+  spec does not drag in cache, schedulers or storage. Guard stubs go on the builder,
+  before `compile()`.
+- **Third-party ports are always mocked**, here too. The database is real; the mailer is
+  not:
+
+  ```ts
+  const mailer: jest.Mocked<Mailer> = { sendInvitation: jest.fn(), sendInvitationReminder: jest.fn() };
+  const moduleRef = await createIntegrationTestingModule({
+    providers: [MembersService, mailerProvider],
+    providerOverrides: [[MAILER, mailer]], // the real adapter and SDK are never built
+  });
+  ```
+
+  Assert the call **and** the rows: a required email that fails must leave no member
+  behind (or one flagged as not invited), whichever the service promises. →
+  `third-party-services.md`
 - TypeORM: keep the harness entity list in sync with the app's registration.
   Prisma: nothing to sync, but regenerate the client after schema changes.
 - Assert **by row count and row content**, read back through the client, not by trusting

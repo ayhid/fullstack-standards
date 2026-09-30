@@ -1,6 +1,6 @@
 ---
 name: fullstack-testing
-description: Testing conventions for a Vite + React + TanStack Query frontend talking to any REST backend (NestJS or Strapi), a NestJS + Postgres API on any ORM (TypeORM and Prisma adapters included), and a Playwright E2E suite — which layer a test belongs in, hooks tested only through components with the frontend service mocked, services tested against the single API entry point, the real-Postgres integration harness, typed factories, and Playwright rules (route mocking, worker-unique data, web-first waits). Use before writing, changing, or debugging any test, or when deciding what coverage a fix needs.
+description: Testing conventions for a Vite + React + TanStack Query frontend talking to any REST backend (NestJS or Strapi), a NestJS + Postgres API on any ORM (TypeORM and Prisma adapters included), and a Playwright E2E suite — which layer a test belongs in, hooks tested only through components with the frontend service mocked, services tested against the single API entry point, third-party services (Brevo, Stripe, S3…) always mocked at their port and never tested themselves, the real-Postgres integration harness, typed factories, and Playwright rules (route mocking, worker-unique data, web-first waits). Use before writing, changing, or debugging any test, or when deciding what coverage a fix needs.
 ---
 
 # Full-stack testing
@@ -33,8 +33,8 @@ mocked browser spec with the API spec's work.
 
 ## The non-negotiables
 
-1. **Do not mock the database.** Mock only genuinely external services (email, object
-   storage, error tracking, payment). A stubbed repository or deep-mocked Prisma client
+1. **Do not mock the database.** Mock only third-party services, the way rule 10 says.
+   A stubbed repository or deep-mocked Prisma client
    asserts the shape of your mock, not the schema. → `references/api-integration.md`
 2. **The test schema comes from the real migration chain** (`migration:run` /
    `prisma migrate deploy`), never `synchronize` or `db push`. The harness is an
@@ -59,6 +59,13 @@ mocked browser spec with the API spec's work.
    interchangeable.
 9. **Checks against a running app are committed specs** (mocked or HAR-replayed), not
    one-off curl or browser probes.
+10. **Third-party services are always mocked, and never tested themselves.** Each
+    provider (Brevo, Stripe, S3, Sentry, an LLM API) sits behind a port and one adapter.
+    Consumer specs mock the **port** and assert that it is called with the exact params
+    (or not called), and that the right exception is raised on each failure — or
+    deliberately not, for a best-effort call. The adapter's spec passes a fake SDK client
+    and asserts the payload and the error translation. No spec `jest.mock`s an SDK or
+    reaches the network. → `references/third-party-services.md`
 
 ## Traps worth knowing up front
 
@@ -77,7 +84,8 @@ mocked browser spec with the API spec's work.
 | File                                     | Covers                                                  |
 | ---------------------------------------- | ------------------------------------------------------- |
 | `references/api-unit.md`                 | Jest config traps, what a unit spec may stub            |
-| `references/api-integration.md`          | Harness design, isolation, factories, external Postgres |
+| `references/api-integration.md`          | Harness design, isolation, factories, provider overrides, external Postgres |
+| `references/third-party-services.md`     | Port + adapter, what each spec mocks, required vs best-effort exceptions |
 | `references/frontend-vitest.md`          | Component tests, service tests, cache bugs, doubles     |
 | `references/playwright.md`               | Auth, route mocking, worker-unique data, tags, HAR       |
 | `references/guard-specs.md`              | Enforcing architecture with specs                        |
@@ -86,4 +94,5 @@ mocked browser spec with the API spec's work.
 | `templates/api-integration/typeorm/`     | TypeORM adapter: migrations, data source, module, factories, example spec |
 | `templates/api-integration/prisma/`      | Prisma adapter: migrate deploy, client, module, factories, example spec |
 | `templates/frontend/*`                   | `renderWithClient`, component specs (invalidation, form and list branches, bulk delete), service spec, query-key and API-layering guards |
+| `templates/third-party/*`                | Mailer port, Brevo adapter + spec, consumer service + spec, SDK import guard |
 | `templates/e2e/*`                        | Worker-scoped names, catch-all route guard               |
