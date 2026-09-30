@@ -154,6 +154,37 @@ function findScript(ws, candidates) {
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 
+// Kept in sync with `fullstack-testing/templates/third-party/third-party-imports.spec.ts`.
+const THIRD_PARTY_SDKS = [
+  '@getbrevo/brevo', 'sib-api-v3-sdk', '@sendgrid/', 'nodemailer', 'stripe', '@aws-sdk/',
+  '@sentry/', 'twilio', 'openai', '@anthropic-ai/sdk',
+];
+
+/** Source without comments, so a spec that *mentions* `jest.mock('sdk')` is not flagged. */
+const withoutComments = (f) =>
+  (read(f) ?? '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+/** Each third-party SDK in the deps, with the files that import it (tests apart). */
+function detectThirdParty(ws, files) {
+  const deps = Object.keys(allDeps(ws.pkg));
+  const packages = deps.filter((d) =>
+    THIRD_PARTY_SDKS.some((sdk) => (sdk.endsWith('/') ? d.startsWith(sdk) : d === sdk)),
+  );
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+  return packages.map((pkg) => {
+    const importRe = new RegExp(`(from\\s+|require\\(\\s*|import\\(\\s*)['"]${escape(pkg)}(/[^'"]*)?['"]`);
+    const mockRe = new RegExp(`jest\\.(do)?[mM]ock\\(\\s*['"]${escape(pkg)}(/[^'"]*)?['"]`);
+    const sources = files.filter((f) => isSource(f) && !f.endsWith('.d.ts'));
+    const importers = sources.filter((f) => !isTest(f) && importRe.test(withoutComments(f)));
+    return {
+      package: pkg,
+      importers: importers.map(rel),
+      adapters: importers.filter((f) => /\.adapter\.ts$/.test(f)).length,
+      mockedInSpecs: sources.filter((f) => isTest(f) && mockRe.test(withoutComments(f))).length,
+    };
+  });
+}
+
 function detectApi(ws) {
   const files = walk(ws.dir, 6);
   const api = { name: ws.pkg.name, dir: rel(ws.dir), framework: 'NestJS' };
@@ -218,6 +249,7 @@ function detectApi(ws) {
     testcontainers: hasDep(ws, '@testcontainers/postgresql') || hasDep(ws, 'testcontainers'),
     integrationSpecs: files.filter((f) => /\.integration-spec\.ts$/.test(f)).length,
   };
+  api.thirdParty = detectThirdParty(ws, files);
   const envFile = read(path.join(ws.dir, '.env.example')) ?? read(path.join(ws.dir, '.env')) ?? '';
   api.tests.databaseUrlInEnv = /^DATABASE_URL=/m.test(envFile);
   return api;
@@ -433,6 +465,20 @@ function renderApi(api) {
       `${t.integrationConfig ? `; config ${code(t.integrationConfig)}` : ''}` +
       `; Testcontainers ${t.testcontainers ? 'installed' : 'not installed'}; \`*.integration-spec.ts\` files: ${t.integrationSpecs}`,
   );
+  if (api.thirdParty.length) {
+    const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+    lines.push(
+      `- Third-party SDKs: ${api.thirdParty.map((p) => `\`${p.package}\` (${plural(p.importers.length, 'file')})`).join(', ')}`,
+    );
+    for (const p of api.thirdParty) {
+      if (p.importers.length > 1 || (p.importers.length === 1 && !p.adapters)) {
+        lines.push(`  - ⚠️ \`${p.package}\` imported outside a single \`*.adapter.ts\`: ${p.importers.map((f) => `\`${f}\``).join(', ')}`);
+      }
+      if (p.mockedInSpecs) {
+        lines.push(`  - ⚠️ \`${p.package}\` is \`jest.mock\`ed in ${plural(p.mockedInSpecs, 'spec')} — mock the port instead`);
+      }
+    }
+  }
   if (!t.harness && t.databaseUrlInEnv) {
     lines.push('  - ⚠️ No harness while `DATABASE_URL` is configured: check whether DB-backed specs run against the developer database');
   }

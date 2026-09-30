@@ -25,7 +25,8 @@ merely filled in.
    runners and commands, the integration harness, TanStack Query files (QueryClient,
    key factory, the API entry point, frontend services, feature hooks), layering debt
    (hooks calling the HTTP layer, components skipping hooks, `renderHook` tests of
-   feature hooks), Playwright, the Postgres image, Node local vs CI, CI workflows, and
+   feature hooks), third-party SDKs per API and the files importing them, Playwright,
+   the Postgres image, Node local vs CI, CI workflows, and
    whether Turbo caches `test`.
 
 2. **Verify every detected line** against the repo before writing. The detector reads
@@ -53,7 +54,8 @@ merely filled in.
 6. **Act on warnings.** Lines marked ⚠️ are real risks the detector found (Node major
    differs between local and CI; DB-backed specs with no harness while `DATABASE_URL`
    points at a developer database; files that break the component → hook → service →
-   entry point layering). Report them to the user; do not silently fix them. Layering
+   entry point layering; a third-party SDK imported outside one adapter, or
+   `jest.mock`ed in a spec). Report them to the user; do not silently fix them. Layering
    counts are debt to list in the manual section, not a reason to refactor unasked.
 
 7. Report what was written, what was corrected by hand, and any TODO left, with the
