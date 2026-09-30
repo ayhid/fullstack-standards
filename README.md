@@ -30,6 +30,31 @@ architecture:
 npx skills add <git-url-of-this-repo>
 ```
 
+### As a Claude Code plugin (skills + enforcement hooks)
+
+```bash
+claude plugin marketplace add ayhid/fullstack-standards
+claude plugin install fullstack-standards@fullstack-standards
+```
+
+The plugin ships the same skills plus three hooks that enforce the architecture while
+an agent works, from `scripts/architecture/check-architecture.mjs`:
+
+| Hook | Does |
+|---|---|
+| `PreToolUse` on Write/Edit | **Denies** an edit whose result breaks a per-file rule: a component importing a service or the API client, a hook importing the client, `fetch`/`axios` outside the client, `renderHook` or a test file under `hooks/`, a third-party SDK imported outside its `*.adapter.ts` or mocked in a spec |
+| `PostToolUse` on Write/Edit | Runs the project's `postCommands` (e.g. its linter) on the written file |
+| `Stop` | For files changed in the working tree: re-checks every rule, and requires each changed component to have a test that renders it and each service a test that imports it. **Blocks finishing** until they exist; `stopCommands` (e.g. the guard specs) run too |
+
+The hooks are inactive in a project without `.claude/fullstack-standards.json` (and
+where `typescript@5` cannot be loaded). `project-profile` writes that file; see below.
+Existing debt is recorded once as a **baseline** that tolerates it and can only shrink:
+
+```bash
+node <plugin>/scripts/architecture/check-architecture.mjs --all .       # audit
+node <plugin>/scripts/architecture/check-architecture.mjs --baseline .  # record today's debt
+```
+
 ## Wire it into a project
 
 The skills hold the **generic** rules. Everything specific to one project (paths,
@@ -37,8 +62,9 @@ commands, ORM, known debt) lives in that project's `AGENTS.md`, in a profile blo
 both skills read first and defer to. Generate it:
 
 ```bash
-node skills/project-profile/scripts/detect-profile.mjs <repo>           # preview
-node skills/project-profile/scripts/detect-profile.mjs <repo> --write   # write it
+node skills/project-profile/scripts/detect-profile.mjs <repo>                 # preview
+node skills/project-profile/scripts/detect-profile.mjs <repo> --write         # write it
+node skills/project-profile/scripts/detect-profile.mjs <repo> --write-config  # the hooks' layout
 ```
 
 or ask an agent to "create the project profile", which also verifies each detected
