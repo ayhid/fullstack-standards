@@ -16,7 +16,7 @@ architecture:
 | Skill                                                          | Use it when                                                              |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | [`tanstack-query-data-layer`](skills/tanstack-query-data-layer) | Adding or changing server state: the component → hook → frontend service → `apiClient.request` layering, query keys, mutations, backend services |
-| [`fullstack-testing`](skills/fullstack-testing)                 | Writing or changing any test, on any layer (hooks only through components, services against the entry point) |
+| [`fullstack-testing`](skills/fullstack-testing)                 | Writing or changing any test, on any layer (hooks only through components, services against the entry point, third-party services mocked at their adapter) |
 | [`project-profile`](skills/project-profile)                     | Creating or refreshing a repo's profile block in `AGENTS.md`             |
 
 ## Install
