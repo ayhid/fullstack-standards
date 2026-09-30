@@ -1,6 +1,6 @@
 ---
 name: fullstack-testing
-description: Testing conventions for a Vite + React + TanStack Query frontend talking to any REST backend (NestJS or Strapi), a NestJS + Postgres API on any ORM (TypeORM and Prisma adapters included), and a Playwright E2E suite — which layer a test belongs in, hooks tested only through components with the frontend service mocked, services tested against the single API entry point, third-party services (Brevo, Stripe, S3…) always mocked at their port and never tested themselves, the real-Postgres integration harness, typed factories, and Playwright rules (route mocking, worker-unique data, web-first waits). Use before writing, changing, or debugging any test, or when deciding what coverage a fix needs.
+description: Testing conventions for a Vite + React + TanStack Query frontend talking to any REST backend (NestJS or Strapi), a NestJS + Postgres API on any ORM (TypeORM and Prisma adapters included), and a Playwright E2E suite — which layer a test belongs in, every component tested by rendering it with the frontend service mocked (hooks covered that way, never tested alone), services tested against the single API entry point, third-party services (Brevo, Stripe, S3…) always mocked at their port and never tested themselves, the real-Postgres integration harness, typed factories, and Playwright rules (route mocking, worker-unique data, web-first waits). Use before writing, changing, or debugging any test, or when deciding what coverage a fix needs.
 ---
 
 # Full-stack testing
@@ -42,12 +42,15 @@ mocked browser spec with the API spec's work.
    or from `prisma/schema.prisma` vs `@nestjs/typeorm`.
 3. **Seed with typed factories, never shared JSON fixtures.** Never assert against a
    generated literal; assert against the created entity's own field.
-4. **Never test a hook directly** (no `renderHook` on a feature hook). Test it through
-   a component: real `QueryClient`, real hook, the feature's **service module mocked**.
-   For every branch, assert which service function ran, with which arguments and how
-   often, and what the user sees. **Test services by mocking the single entry point**
-   (`apiClient.request`) and asserting the exact `{ method, path, query, body }` and the
-   mapped result. → `references/frontend-vitest.md`
+4. **Every component has a test that renders it** — whether or not it uses a hook. The
+   component is the unit: render it with a real `QueryClient` and the feature's
+   **service module mocked**, and for every branch assert what the user sees and which
+   service function ran, with which arguments and how often. Hooks are covered that
+   way and get **no tests of their own** (no `renderHook`, no test file under
+   `hooks/`). **Every service has a test** that mocks the single entry point
+   (`apiClient.request`) and asserts the exact `{ method, path, query, body }` and the
+   mapped result. The plugin's hooks enforce all of this while an agent works (see
+   the README). → `references/frontend-vitest.md`
 5. **Never stub a form field that carries `required`** in a test that asserts a submit
    happens; native validation blocks submit before React sees it. Assert
    `form.checkValidity()` or drive the real field.

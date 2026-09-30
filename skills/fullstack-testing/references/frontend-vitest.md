@@ -30,7 +30,13 @@ API client              →  stub fetch                   (transport behaviour o
 Each layer mocks the one directly below it and nothing else. Hooks have no test file of
 their own; `api-layering-contract.test.ts` fails on a `renderHook` of a feature hook.
 
-## Component tests (hooks are tested through them)
+## Component tests (every component; hooks are covered through them)
+
+The component is the unit of frontend testing: **each component gets a test that
+renders it**, whatever it uses. A component that calls a hook exercises the hook, so
+the hook needs no test of its own; a component without hooks is tested just the same.
+A test file may live next to the component or anywhere under the source root, as long
+as it imports the component and renders one of its exports.
 
 Templates: `templates/frontend/tasks-list-invalidation.test.tsx`, `task-form.test.tsx`,
 `tasks-list-page.test.tsx`, `tasks-bulk-delete.test.tsx`.
