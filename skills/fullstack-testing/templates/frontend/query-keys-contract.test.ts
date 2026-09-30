@@ -103,7 +103,7 @@ describe('query-key contract', () => {
 
     expect(
       offenders,
-      'Build query keys with `queryKeys` from @lib/api/queryKeys, never an inline array'
+      'Build query keys with `queryKeys` from @lib/api/query-keys, never an inline array'
     ).toEqual([]);
   });
 
