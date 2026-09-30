@@ -47,6 +47,10 @@ mechanics live in `orm/<orm>.md`; read the one the project profile names
    enums are nominal; a byte-identical copy is a different type.
 8. **Never edit an applied migration.** Generate a new one; keep it additive and
    idempotent where the deploy can run the chain more than once.
+9. **A service never imports a third-party SDK.** It injects a port (`@Inject(MAILER)
+   mailer: Mailer`), one adapter per provider holds the SDK and its credentials, and the
+   service maps the port's error to a Nest exception, or logs it when the call is
+   best-effort. Templates and tests: `fullstack-testing/references/third-party-services.md`.
 
 ## Testing services
 
