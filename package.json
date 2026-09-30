@@ -7,6 +7,12 @@
     "test": "node --test 'scripts/**/*.test.mjs'"
   },
   "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^10.0.1",
+    "conventional-changelog-conventionalcommits": "^10.4.0",
+    "semantic-release": "^24.2.9",
     "typescript": "^5.9.0"
-  }
+  },
+  "version": "1.1.0"
 }

@@ -2,8 +2,19 @@
   "name": "fullstack-standards",
   "version": "1.1.0",
   "description": "Skills and hooks for React frontends (TanStack Query, SWR or RTK Query) on REST backends (NestJS, Strapi): component → hook → service → one API entry point, component-first tests, third-party services behind adapters.",
-  "author": { "name": "Ayoub Hidri" },
+  "author": {
+    "name": "Ayoub Hidri"
+  },
   "homepage": "https://github.com/ayhid/fullstack-standards",
   "repository": "https://github.com/ayhid/fullstack-standards",
-  "keywords": ["react", "tanstack-query", "swr", "rtk-query", "nestjs", "strapi", "testing", "architecture"]
+  "keywords": [
+    "react",
+    "tanstack-query",
+    "swr",
+    "rtk-query",
+    "nestjs",
+    "strapi",
+    "testing",
+    "architecture"
+  ]
 }
