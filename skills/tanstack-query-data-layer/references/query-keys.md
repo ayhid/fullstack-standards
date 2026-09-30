@@ -46,13 +46,15 @@ Keys are `[root, operation, ...params]`. TanStack Query matches invalidation by
 ## Pin the namespace in a test
 
 Assert on the key the **hook** actually caches, not on the factory. The factory builds
-`lists()` from `all`, so comparing the two always passes.
+`lists()` from `all`, so comparing the two always passes. Render the component that
+uses the hook; the hook is never tested on its own.
 
 ```ts
 it('caches the list under the root that mutations invalidate', async () => {
   const client = createProductionLikeQueryClient();
-  const list = renderHook(() => useTasks({ page: 1 }), { wrapper: queryWrapper(client) });
-  await waitFor(() => expect(list.result.current.isSuccess).toBe(true));
+  tasksService.list.mockResolvedValue(page([EXISTING]));
+  renderWithClient(<TasksListPage />, client);
+  await screen.findByText(EXISTING.title);
 
   expect(client.getQueryCache().findAll({ queryKey: queryKeys.tasks.all })).toHaveLength(1);
 });

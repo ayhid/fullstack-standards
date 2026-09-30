@@ -1,11 +1,12 @@
 /**
- * Settling bulk delete: N parallel `DELETE /<resource>/:id` calls whose
- * per-id outcome is returned as data. `Promise.all` is the wrong combinator —
- * one 404 (someone else already deleted the row) would reject the whole
- * mutation and tell the user nothing was deleted while N-1 rows were gone.
+ * Settling bulk delete: N parallel single-row deletes whose per-id outcome is
+ * returned as data. The service passes its own `remove`, so the path stays in
+ * the service and every call still goes through `apiClient.request`.
+ *
+ * `Promise.all` is the wrong combinator — one 404 (someone else already
+ * deleted the row) would reject the whole mutation and tell the user nothing
+ * was deleted while N-1 rows were gone.
  */
-
-import { apiDelete } from './http';
 
 export interface BulkDeleteFailure {
   id: number;
@@ -33,13 +34,13 @@ function toError(reason: unknown): Error {
 
 export async function bulkDelete(
   ids: readonly number[],
-  toPath: (id: number) => string
+  deleteOne: (id: number) => Promise<unknown>
 ): Promise<BulkDeleteResult> {
   // A repeated id would fire a second DELETE that 404s and double-counts.
   const requestedIds = [...new Set(ids)];
 
   const settled = await Promise.allSettled(
-    requestedIds.map(id => apiDelete(toPath(id)))
+    requestedIds.map(id => deleteOne(id))
   );
 
   const deletedIds: number[] = [];

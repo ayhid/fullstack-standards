@@ -1,8 +1,9 @@
 import { QueryClient, type QueryClientConfig } from '@tanstack/react-query';
 
 /**
- * Production defaults. Exported so hook tests can reproduce cache bugs under the
- * same `staleTime` the app runs with — a short or zero staleTime hides them.
+ * Production defaults. Exported so component tests can reproduce cache bugs
+ * under the same `staleTime` the app runs with — a short or zero staleTime
+ * hides them.
  */
 export const queryClientConfig: QueryClientConfig = {
   defaultOptions: {

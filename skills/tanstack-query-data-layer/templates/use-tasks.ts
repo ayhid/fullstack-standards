@@ -6,29 +6,20 @@ import {
   type UseQueryOptions,
 } from '@tanstack/react-query';
 
-import { bulkDelete, type BulkDeleteResult } from '@lib/api/bulk-delete';
-import { apiDelete, apiGet, apiPatch, apiPost } from '@lib/api/http';
+import type { BulkDeleteResult } from '@lib/api/bulk-delete';
 import { queryKeys, type TaskListParams } from '@lib/api/query-keys';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
+import {
+  tasksService,
+  type CreateTaskInput,
+  type Paginated,
+  type Task,
+  type UpdateTaskInput,
+} from '../services/tasks.service';
 
-export interface Task {
-  id: number;
-  projectId: number;
-  title: string;
-  status: 'todo' | 'doing' | 'done';
-}
-
-export interface Paginated<T> {
-  data: T[];
-  meta: { page: number; pageSize: number; total: number; totalPages: number };
-}
-
-// Prefer the shared-types wire contract over these local declarations.
-export type CreateTaskInput = Pick<Task, 'projectId' | 'title'>;
-export type UpdateTaskInput = { id: number } & Partial<Omit<Task, 'id'>>;
+// Hooks call the service only — never `@lib/api/client`, never `fetch`.
+// Components import the hooks and these re-exported types, never the service.
+export type { CreateTaskInput, Paginated, Task, UpdateTaskInput };
 
 interface MutationCallbacks<TResult> {
   onSuccess?: (result: TResult) => void;
@@ -52,7 +43,9 @@ export function useTasks(
   params?: TaskListParams,
   options?: QueryOptions<Paginated<Task>>
 ) {
-  // Normalise defaults before building the key so equivalent calls share a cache entry.
+  // Normalise defaults before building the key so equivalent calls share a
+  // cache entry. The same object is the key and the service's argument, so the
+  // two cannot drift.
   const { page = 1, pageSize = 25, search, status, sortBy, order } =
     params ?? {};
   const query = compact({
@@ -65,7 +58,7 @@ export function useTasks(
 
   return useQuery({
     queryKey: queryKeys.tasks.lists(query),
-    queryFn: () => apiGet<Paginated<Task>>('/tasks', query),
+    queryFn: () => tasksService.list(query),
     placeholderData: keepPreviousData,
     ...options,
   });
@@ -74,7 +67,7 @@ export function useTasks(
 export function useTask(id: number | undefined, options?: QueryOptions<Task>) {
   return useQuery({
     queryKey: queryKeys.tasks.detail(id ?? -1),
-    queryFn: () => apiGet<Task>(`/tasks/${id}`),
+    queryFn: () => tasksService.get(id!),
     enabled: id != null,
     ...options,
   });
@@ -88,7 +81,7 @@ export function useCreateTask(options?: MutationCallbacks<Task>) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: CreateTaskInput) => apiPost<Task>('/tasks', input),
+    mutationFn: (input: CreateTaskInput) => tasksService.create(input),
     onSuccess: task => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
       // Project counters changed too, on the list and the detail page.
@@ -103,8 +96,7 @@ export function useUpdateTask(options?: MutationCallbacks<Task>) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, ...patch }: UpdateTaskInput) =>
-      apiPatch<Task>(`/tasks/${id}`, patch),
+    mutationFn: (input: UpdateTaskInput) => tasksService.update(input),
     onSuccess: task => {
       queryClient.setQueryData(queryKeys.tasks.detail(task.id), task);
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
@@ -120,9 +112,7 @@ export function useDeleteTask(options?: MutationCallbacks<void>) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: number) => {
-      await apiDelete(`/tasks/${id}`);
-    },
+    mutationFn: (id: number) => tasksService.remove(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
@@ -136,8 +126,8 @@ export function useBulkDeleteTasks(options?: MutationCallbacks<BulkDeleteResult>
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (ids: number[]) => bulkDelete(ids, id => `/tasks/${id}`),
-    // `bulkDelete` settles, so this runs for partial and total failure too.
+    mutationFn: (ids: number[]) => tasksService.removeMany(ids),
+    // `removeMany` settles, so this runs for partial and total failure too.
     onSuccess: result => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
