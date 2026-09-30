@@ -2,7 +2,7 @@ name: CI and release
 
 on:
   push:
-    branches: [main]
+    branches: [main, stable]
   pull_request:
 
 permissions:
@@ -22,7 +22,7 @@ jobs:
 
   release:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/stable')
     runs-on: ubuntu-latest
     permissions:
       contents: write      # tag, release commit, GitHub release
