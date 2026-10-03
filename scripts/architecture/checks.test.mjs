@@ -225,3 +225,34 @@ describe('strapi presets', () => {
     assert.throws(() => resolveConfig({ frontends: [{ root: 'x', preset: 'nope' }] }), /unknown preset/);
   });
 });
+
+describe('strapi-admin subject tests', () => {
+  const strapi = resolveConfig({ frontends: [{ root: 'admin/src', preset: 'strapi-admin' }] });
+  const files = {
+    'tests/admin/List.test.tsx': "import { List } from '../../admin/src/components/List';\nrender(<List />);",
+    'admin/src/components/Panel.test.tsx':
+      "import { Panel } from './Panel';\nconst p = Panel({ documentId: 'd' });\nrenderWithDataLayer(<>{p.content}</>);",
+  };
+  const readParsed = (p) => (p in files ? parse(tsApi, p, files[p]) : null);
+  const check = (file) => checkSubjectTest(strapi, file, 'component', Object.keys(files), readParsed);
+
+  it('counts tests kept in the plugin tests/ folder', () => {
+    assert.deepEqual(check('admin/src/components/List.tsx'), []);
+  });
+
+  it('counts a panel called for its { title, content } and rendered', () => {
+    assert.deepEqual(check('admin/src/components/Panel.tsx'), []);
+  });
+});
+
+describe('strapi-admin tests outside admin/src', () => {
+  const strapi = resolveConfig({
+    frontends: [{ root: 'admin/src', preset: 'strapi-admin' }],
+    apis: [{ root: '.', preset: 'strapi-plugin' }],
+  });
+  it('still bans renderHook in the plugin tests/ folder', () => {
+    const file = 'tests/admin/hooks.test.tsx';
+    const ids = checkFile(strapi, file, parse(tsApi, file, "import { renderHook } from '@testing-library/react';")).map((f) => f.rule);
+    assert.deepEqual(ids, ['no-render-hook']);
+  });
+});

@@ -28,6 +28,8 @@ const FRONTEND_DEFAULTS = {
   // Data-library hooks a component must not call itself: [{ package, names }].
   componentForbiddenImports: [],
   renderFunctions: ['render', 'renderWithDataLayer', 'renderWithClient'],
+  // Extra folders, relative to the root, whose tests also cover this frontend.
+  testRoots: [],
   ignore: [],
 };
 
@@ -74,6 +76,8 @@ const PRESETS = {
       { package: '@strapi/admin/strapi-admin', names: ['getFetchClient', 'useFetchClient'] },
     ],
     apiLib: [],
+    // strapi-plugin-testing keeps tests in the plugin's `tests/` folder.
+    testRoots: ['../../tests'],
     componentForbiddenImports: [
       {
         package: '@tanstack/react-query',
@@ -360,6 +364,13 @@ export function checkFile(config, file, parsed) {
   }
 
   // api
+  // A frontend's tests may live here (its `testRoots`): renderHook stays banned.
+  if (test && inTestRootOfFrontend(config, file)) {
+    const rh = parsed.imports.find(
+      (i) => i.specifier === '@testing-library/react' && i.names.some((n) => n.imported === 'renderHook'),
+    );
+    if (rh) add('no-render-hook', rh.line, 'Test the component that uses the hook; never `renderHook` it.');
+  }
   const adapter = matchesAny(inRoot, unit.adapters);
   const allowed = matchesAny(inRoot, unit.allowedImporters);
   for (const i of parsed.imports) {
@@ -418,6 +429,15 @@ export function checkFile(config, file, parsed) {
   return findings;
 }
 
+/** Is `file` under one of a frontend's `testRoots` (outside the frontend itself)? */
+function inTestRootOfFrontend(config, file) {
+  return config.frontends.some((f) =>
+    (f.testRoots ?? [])
+      .map((r) => path.posix.normalize(path.posix.join(rootOf(f), r)))
+      .some((r) => !r.startsWith('..') && file.startsWith(`${r}/`)),
+  );
+}
+
 /** How a unit's API entry point is named in messages. */
 export function entryPointOf(unit) {
   const names = (unit.apiClientImports ?? []).flatMap((e) => e.names);
@@ -450,22 +470,31 @@ export function subjectKind(config, file, parsed) {
 export function checkSubjectTest(config, file, kind, testFiles, readParsed) {
   const { unit, inRoot } = locate(config, file);
   const target = stripExt(inRoot).replace(/\/index$/, '');
-  const unitRoot = unit.root.replace(/\/+$/, '');
+  const unitRoot = rootOf(unit);
   const name = path.posix.basename(stripExt(file));
 
   let importedOnly;
   for (const test of testFiles) {
     const parsed = readParsed(test);
     if (!parsed) continue;
-    const testInRoot = test.slice(unitRoot.length + 1);
-    const subjectImports = parsed.imports.filter(
-      (i) => !i.typeOnly && resolveSpecifier(unit, testInRoot, i.specifier).path === target,
-    );
+    const inside = unitRoot === '' || test.startsWith(`${unitRoot}/`);
+    // A test outside the root (a `testRoots` folder) resolves relative imports from the project.
+    const resolveFromTest = (specifier) =>
+      inside || !specifier.startsWith('.')
+        ? resolveSpecifier(unit, inside ? test.slice(unitRoot.length ? unitRoot.length + 1 : 0) : '', specifier).path
+        : path.posix.relative(
+            unitRoot,
+            path.posix.normalize(path.posix.join(path.posix.dirname(test), specifier)),
+          ).replace(/\.[cm]?[jt]sx?$/, '').replace(/\/index$/, '');
+    const subjectImports = parsed.imports.filter((i) => !i.typeOnly && resolveFromTest(i.specifier) === target);
     if (subjectImports.length === 0) continue;
     if (kind === 'service') return [];
     const locals = new Set(subjectImports.flatMap((i) => i.names.map((n) => n.local)));
     const renders = parsed.calls.some((c) => unit.renderFunctions.includes(c.name));
-    if (renders && parsed.jsxTags.some((t) => locals.has(t.split('.')[0]))) return [];
+    // As JSX, or called for what it returns (a Strapi panel's `{ title, content }`).
+    const used = parsed.jsxTags.some((t) => locals.has(t.split('.')[0])) ||
+      parsed.calls.some((c) => locals.has(c.name));
+    if (renders && used) return [];
     importedOnly ??= test;
   }
   if (importedOnly) {

@@ -122,17 +122,19 @@ const allSourceFiles = () => [
   ...new Set([...config.frontends, ...config.apis].flatMap((unit) => sourceFilesUnder(unit.root))),
 ].filter((file) => locate(config, file));
 
-/** The test files of the frontend `file` belongs to (walked once per root). */
-const testsByRoot = new Map();
+/** The test files of the frontend `file` belongs to, plus its `testRoots` (walked once per unit). */
+const testsByUnit = new Map();
 function testFilesOf(file) {
   const { unit } = locate(config, file);
-  if (!testsByRoot.has(unit.root)) {
-    testsByRoot.set(
-      unit.root,
-      sourceFilesUnder(unit.root).filter((f) => isTestFile(f) && locate(config, f)?.unit === unit),
-    );
+  if (!testsByUnit.has(unit)) {
+    const own = sourceFilesUnder(unit.root).filter((f) => isTestFile(f) && locate(config, f)?.unit === unit);
+    const extra = (unit.testRoots ?? [])
+      .map((r) => path.posix.normalize(path.posix.join(unit.root, r)))
+      .filter((r) => !r.startsWith('..'))
+      .flatMap((r) => sourceFilesUnder(r).filter((f) => isTestFile(f)));
+    testsByUnit.set(unit, [...new Set([...own, ...extra])]);
   }
-  return testsByRoot.get(unit.root);
+  return testsByUnit.get(unit);
 }
 
 function changedFiles() {
