@@ -22,8 +22,13 @@ const FRONTEND_DEFAULTS = {
   hooks: ['**/hooks/**'],
   services: ['**/services/**', '**/*.service.ts'],
   apiClient: 'lib/api/client.ts',
+  // Package exports that also count as the entry point: [{ package, names }].
+  apiClientImports: [],
   apiLib: ['lib/api/**'],
+  // Data-library hooks a component must not call itself: [{ package, names }].
+  componentForbiddenImports: [],
   renderFunctions: ['render', 'renderWithDataLayer', 'renderWithClient'],
+  ignore: [],
 };
 
 const API_DEFAULTS = {
@@ -37,16 +42,79 @@ const API_DEFAULTS = {
   allowedImporters: ['**/instrument.ts', '**/main.ts'],
   // Adapters whose own spec may `jest.mock` their SDK (module-function SDKs).
   sdkMockAllowedIn: [],
+  // Framework-free domain modules: no import of `domainForbiddenImports`
+  // (prefixes), no `<global>.x` access for `domainForbiddenGlobals`.
+  domain: [],
+  domainForbiddenImports: [],
+  domainForbiddenGlobals: [],
+  // Unit tests stay units: no import of the integration harness (path globs)
+  // or of `unitForbiddenPackages`, no call to `harnessCalls`.
+  unitTests: [],
+  harness: [],
+  unitForbiddenPackages: [],
+  harnessCalls: [],
+  // Framework data access a unit test must not fake (`documents: jest.fn()`).
+  forbiddenFakes: [],
+  ignore: [],
+};
+
+/**
+ * Layouts selected with `"preset"` on a unit; the unit's own keys still win.
+ * `strapi-admin`: a Strapi plugin's `admin/src`, whose entry point is Strapi's
+ * `getFetchClient()` (no wrapper file). `strapi-plugin`: the plugin root, with
+ * `server/src` and the `tests/` layout of the strapi-plugin-testing skill.
+ */
+const PRESETS = {
+  'strapi-admin': {
+    aliases: {},
+    components: ['components/**', 'pages/**', 'features/*/components/**'],
+    apiClient: '',
+    apiClientImports: [
+      { package: '@strapi/strapi/admin', names: ['getFetchClient', 'useFetchClient'] },
+      { package: '@strapi/admin/strapi-admin', names: ['getFetchClient', 'useFetchClient'] },
+    ],
+    apiLib: [],
+    componentForbiddenImports: [
+      {
+        package: '@tanstack/react-query',
+        names: ['useQuery', 'useQueries', 'useInfiniteQuery', 'useSuspenseQuery', 'useMutation', 'useQueryClient'],
+      },
+    ],
+  },
+  'strapi-plugin': {
+    adapters: ['server/src/**/*.adapter.ts'],
+    allowedImporters: [],
+    domain: ['server/src/domain/**'],
+    domainForbiddenImports: ['@strapi/'],
+    domainForbiddenGlobals: ['strapi'],
+    unitTests: ['tests/unit/**', 'server/src/**/*.test.ts'],
+    harness: ['tests/support/harness*', 'tests/integration/**'],
+    unitForbiddenPackages: ['@strapi/strapi'],
+    harnessCalls: ['createStrapi', 'compileStrapi'],
+    forbiddenFakes: ['documents', 'entityService', 'db'],
+    ignore: ['dist/**', 'admin/**', 'fixture-app/**', 'playground/**', 'node_modules/**'],
+  },
+};
+
+const withPreset = (defaults, unit) => {
+  if (unit.preset && !PRESETS[unit.preset]) {
+    throw new Error(`fullstack-standards: unknown preset "${unit.preset}" (known: ${Object.keys(PRESETS).join(', ')})`);
+  }
+  return { ...defaults, ...PRESETS[unit.preset], ...unit };
 };
 
 /** The project's config, with defaults filled in; `null` when the project has none. */
 export function loadConfig(projectDir) {
   const file = path.join(projectDir, CONFIG_FILE);
   if (!fs.existsSync(file)) return null;
-  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  return resolveConfig(JSON.parse(fs.readFileSync(file, 'utf8')));
+}
+
+/** A raw config object with defaults and presets filled in. */
+export function resolveConfig(raw) {
   return {
-    frontends: (raw.frontends ?? []).map((f) => ({ ...FRONTEND_DEFAULTS, ...f })),
-    apis: (raw.apis ?? []).map((a) => ({ ...API_DEFAULTS, ...a })),
+    frontends: (raw.frontends ?? []).map((f) => withPreset(FRONTEND_DEFAULTS, f)),
+    apis: (raw.apis ?? []).map((a) => withPreset(API_DEFAULTS, a)),
     // { "<path>": ["<rule id>", …] } — existing debt the checks tolerate, and
     // must be removed as soon as the file complies (the list only shrinks).
     baseline: raw.baseline ?? {},
@@ -86,14 +154,20 @@ export const isTestFile = (file) =>
 
 const isSource = (file) => /\.[cm]?[jt]sx?$/.test(file) && !file.endsWith('.d.ts');
 
-/** The frontend or API whose root contains `file`, with `file` relative to that root. */
+/** A unit root without trailing slashes; `''` for the project root (`.`). */
+const rootOf = (unit) => unit.root.replace(/\/+$/, '').replace(/^\.$/, '');
+
+/**
+ * The frontend or API whose root contains `file`, with `file` relative to that
+ * root. Frontends are tried first, so an API rooted at `.` can hold a frontend.
+ */
 export function locate(config, file) {
   for (const kind of ['frontends', 'apis']) {
     for (const unit of config[kind]) {
-      const root = unit.root.replace(/\/+$/, '');
-      if (file === root || file.startsWith(`${root}/`)) {
-        return { kind: kind === 'frontends' ? 'frontend' : 'api', unit, inRoot: file.slice(root.length + 1) };
-      }
+      const root = rootOf(unit);
+      const inRoot = root === '' ? file : file.startsWith(`${root}/`) ? file.slice(root.length + 1) : null;
+      if (inRoot === null || matchesAny(inRoot, unit.ignore ?? [])) continue;
+      return { kind: kind === 'frontends' ? 'frontend' : 'api', unit, inRoot };
     }
   }
   return null;
@@ -138,7 +212,22 @@ export function loadTypeScript(projectDir) {
 export function parse(tsApi, fileName, text) {
   const source = tsApi.createSourceFile(fileName, text, tsApi.ScriptTarget.Latest, true, tsApi.ScriptKind.TSX);
   const line = (node) => source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
-  const out = { imports: [], mocks: [], calls: [], jsxTags: [], hasJsx: false, exportsPascal: false };
+  const out = {
+    imports: [], mocks: [], calls: [], jsxTags: [], hasJsx: false, exportsPascal: false,
+    // `x.y` accesses by their leftmost identifier, and object properties
+    // assigned a test double (`documents: jest.fn()`, `db: { query: vi.fn() }`).
+    globalRefs: [], fakedProps: [],
+  };
+  const isDouble = (node) => {
+    let found = false;
+    const look = (n) => {
+      if (found) return;
+      if (tsApi.isCallExpression(n) && /^(jest|vi)\.fn$/.test(n.expression.getText(source))) found = true;
+      else tsApi.forEachChild(n, look);
+    };
+    look(node);
+    return found;
+  };
 
   const visit = (node) => {
     if ((tsApi.isImportDeclaration(node) || tsApi.isExportDeclaration(node)) &&
@@ -180,6 +269,13 @@ export function parse(tsApi, fileName, text) {
       out.jsxTags.push(node.tagName.getText(source));
     }
     if (tsApi.isJsxFragment(node)) out.hasJsx = true;
+    if (tsApi.isPropertyAccessExpression(node) && tsApi.isIdentifier(node.expression)) {
+      out.globalRefs.push({ name: node.expression.text, line: line(node) });
+    }
+    if (tsApi.isPropertyAssignment(node) && (tsApi.isIdentifier(node.name) || tsApi.isStringLiteral(node.name)) &&
+        isDouble(node.initializer)) {
+      out.fakedProps.push({ name: node.name.text, line: line(node) });
+    }
     tsApi.forEachChild(node, visit);
   };
   visit(source);
@@ -212,10 +308,13 @@ export function checkFile(config, file, parsed) {
   const test = isTestFile(inRoot);
 
   if (kind === 'frontend') {
-    const clientPath = stripExt(unit.apiClient);
+    const clientPath = unit.apiClient ? stripExt(unit.apiClient) : null;
     const resolved = parsed.imports.map((i) => ({ ...i, ...resolveSpecifier(unit, inRoot, i.specifier) }));
-    const isClient = (r) => r.path === clientPath;
+    const importsAny = (r, list) =>
+      r.package && list.some((e) => e.package === r.package && r.names.some((n) => e.names.includes(n.imported)));
+    const isClient = (r) => (clientPath !== null && r.path === clientPath) || importsAny(r, unit.apiClientImports);
     const isService = (r) => r.path && matchesAny(`${r.path}.ts`, unit.services);
+    const entry = entryPointOf(unit);
 
     if (test) {
       const rh = parsed.imports.find(
@@ -236,20 +335,24 @@ export function checkFile(config, file, parsed) {
     for (const r of resolved) {
       if (r.typeOnly) continue;
       if (component && (isService(r) || isClient(r))) {
-        add('component-imports', r.line, `Components use hooks only; \`${r.specifier}\` is ${isClient(r) ? 'the API client' : 'a service'}.`);
+        add('component-imports', r.line, `Components use hooks only; \`${r.specifier}\` is ${isClient(r) ? `the API entry point (${entry})` : 'a service'}.`);
       } else if (hook && isClient(r)) {
-        add('hook-imports', r.line, 'Hooks call a service, never the API client. Move the request into the feature service.');
+        add('hook-imports', r.line, `Hooks call a service, never the API entry point (${entry}). Move the request into the feature service.`);
       } else if (!service && !apiLib && !component && !hook && isClient(r)) {
-        add('client-importers', r.line, 'Only frontend services call `apiClient.request`.');
+        add('client-importers', r.line, `Only frontend services call the API entry point (${entry}).`);
+      }
+      if (component && importsAny(r, unit.componentForbiddenImports)) {
+        const names = r.names.map((n) => n.imported).filter((n) => unit.componentForbiddenImports.some((e) => e.names.includes(n)));
+        add('component-data-hooks', r.line, `Components call feature hooks only; move \`${names.join('`, `')}\` into a hook under \`features/<feature>/hooks/\`.`);
       }
       if (r.package === 'axios' && inRoot !== unit.apiClient) {
-        add('no-fetch', r.line, `Every backend call goes through \`${unit.apiClient}\`.`);
+        add('no-fetch', r.line, `Every backend call goes through ${entry}.`);
       }
     }
     if (inRoot !== unit.apiClient) {
       for (const c of parsed.calls) {
         if (['fetch', 'window.fetch', 'globalThis.fetch'].includes(c.name)) {
-          add('no-fetch', c.line, `Every backend call goes through \`${unit.apiClient}\`.`);
+          add('no-fetch', c.line, `Every backend call goes through ${entry}.`);
         }
       }
     }
@@ -275,7 +378,51 @@ export function checkFile(config, file, parsed) {
       }
     }
   }
+
+  if (!test && matchesAny(inRoot, unit.domain)) {
+    for (const i of parsed.imports) {
+      if (!i.typeOnly && unit.domainForbiddenImports.some((p) => i.specifier.startsWith(p))) {
+        add('domain-framework-free', i.line, `Domain modules never import \`${i.specifier}\`: keep the decision here and the framework call in an adapter or service.`);
+      }
+    }
+    const seen = new Set();
+    for (const g of parsed.globalRefs) {
+      if (unit.domainForbiddenGlobals.includes(g.name) && !seen.has(g.line)) {
+        seen.add(g.line);
+        add('domain-framework-free', g.line, `Domain modules never touch \`${g.name}\`: take what you need as an argument, or define a port.`);
+      }
+    }
+  }
+
+  if (test && matchesAny(inRoot, unit.unitTests)) {
+    for (const i of parsed.imports) {
+      if (i.typeOnly) continue;
+      const r = resolveSpecifier(unit, inRoot, i.specifier);
+      const harness = r.path && (matchesAny(r.path, unit.harness) || matchesAny(`${r.path}.ts`, unit.harness));
+      const pkg = r.package && unit.unitForbiddenPackages.some((p) => r.package === p || r.package.startsWith(`${p}/`));
+      if (harness || pkg) {
+        add('unit-stays-unit', i.line, `Unit tests never import \`${i.specifier}\`: they run without Strapi. Move the case to an integration test, or fake a port.`);
+      }
+    }
+    for (const c of parsed.calls) {
+      if (unit.harnessCalls.includes(c.name)) {
+        add('unit-stays-unit', c.line, `Unit tests never call \`${c.name}\`: booting the framework makes it an integration test.`);
+      }
+    }
+    for (const f of parsed.fakedProps) {
+      if (unit.forbiddenFakes.includes(f.name)) {
+        add('no-fake-data-access', f.line, `Do not fake \`${f.name}\`: filters, drafts, locales and permissions are framework behaviour. Put the logic behind a port and fake the port, or test it against the real framework.`);
+      }
+    }
+  }
   return findings;
+}
+
+/** How a unit's API entry point is named in messages. */
+export function entryPointOf(unit) {
+  const names = (unit.apiClientImports ?? []).flatMap((e) => e.names);
+  if (!unit.apiClient && names.length) return `\`${names[0]}()\``;
+  return `\`${unit.apiClient}\``;
 }
 
 // ─── cross-file rules ────────────────────────────────────────────────────────
@@ -333,7 +480,7 @@ export function checkSubjectTest(config, file, kind, testFiles, readParsed) {
     line: 1,
     message: kind === 'component'
       ? `No test renders this component: add \`${name}.test.tsx\` that renders it, with the feature's service mocked.`
-      : `No test imports this service: add \`${name}.test.ts\` asserting each \`apiClient.request\` call.`,
+      : `No test imports this service: add \`${name}.test.ts\` asserting each request it sends through ${entryPointOf(unit)}.`,
   }];
 }
 

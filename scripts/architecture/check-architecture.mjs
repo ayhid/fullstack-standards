@@ -112,20 +112,25 @@ function sourceFilesUnder(root) {
       else if (/\.[cm]?[jt]sx?$/.test(entry.name) && !entry.name.endsWith('.d.ts')) out.push(file);
     }
   };
-  const dir = root.replace(/\/+$/, '');
+  const dir = root.replace(/\/+$/, '').replace(/^\.$/, '');
   if (fs.existsSync(path.join(projectDir, dir))) walk(dir);
   return out;
 }
 
-const allSourceFiles = () =>
-  [...config.frontends, ...config.apis].flatMap((unit) => sourceFilesUnder(unit.root));
+// Each file once, in the unit that owns it (an API rooted at `.` can hold a frontend).
+const allSourceFiles = () => [
+  ...new Set([...config.frontends, ...config.apis].flatMap((unit) => sourceFilesUnder(unit.root))),
+].filter((file) => locate(config, file));
 
 /** The test files of the frontend `file` belongs to (walked once per root). */
 const testsByRoot = new Map();
 function testFilesOf(file) {
   const { unit } = locate(config, file);
   if (!testsByRoot.has(unit.root)) {
-    testsByRoot.set(unit.root, sourceFilesUnder(unit.root).filter((f) => isTestFile(f)));
+    testsByRoot.set(
+      unit.root,
+      sourceFilesUnder(unit.root).filter((f) => isTestFile(f) && locate(config, f)?.unit === unit),
+    );
   }
   return testsByRoot.get(unit.root);
 }

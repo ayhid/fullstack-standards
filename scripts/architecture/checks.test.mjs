@@ -9,7 +9,9 @@ import {
   checkSubjectTest,
   globToRegExp,
   loadTypeScript,
+  locate,
   parse,
+  resolveConfig,
   resolveSpecifier,
   subjectKind,
 } from './checks.mjs';
@@ -17,7 +19,7 @@ import {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const tsApi = loadTypeScript(repoRoot);
 
-const config = {
+const config = resolveConfig({
   frontends: [{
     root: 'app/src',
     aliases: { '@/': '' },
@@ -36,7 +38,7 @@ const config = {
     sdkMockAllowedIn: ['sentry/sentry.service.spec.ts'],
   }],
   baseline: {},
-};
+});
 
 const rules = (file, text) => checkFile(config, file, parse(tsApi, file, text)).map((f) => f.rule);
 
@@ -161,5 +163,65 @@ describe('baseline', () => {
       applyBaseline(withBaseline, 'app/src/lib/hooks/use-x.ts', [], { reportStale: true }).map((f) => f.rule),
       ['stale-baseline'],
     );
+  });
+});
+
+describe('strapi presets', () => {
+  const strapi = resolveConfig({
+    frontends: [{ root: 'admin/src', preset: 'strapi-admin' }],
+    apis: [{ root: '.', preset: 'strapi-plugin' }],
+  });
+  const ruleIds = (file, text) => checkFile(strapi, file, parse(tsApi, file, text)).map((f) => f.rule);
+
+  it('locates admin files in the frontend and the rest of the plugin in the API, ignoring build output', () => {
+    assert.equal(locate(strapi, 'admin/src/components/A.tsx').kind, 'frontend');
+    assert.deepEqual(locate(strapi, 'server/src/domain/x.ts'), { kind: 'api', unit: strapi.apis[0], inRoot: 'server/src/domain/x.ts' });
+    assert.equal(locate(strapi, 'dist/server/index.js'), null);
+    assert.equal(locate(strapi, 'fixture-app/src/index.ts'), null);
+  });
+
+  it('treats getFetchClient as the entry point: services only', () => {
+    const imp = "import { getFetchClient } from '@strapi/strapi/admin';";
+    assert.deepEqual(ruleIds('admin/src/features/t/services/tasks.service.ts', imp), []);
+    assert.deepEqual(ruleIds('admin/src/features/t/hooks/use-tasks.ts', imp), ['hook-imports']);
+    assert.deepEqual(ruleIds('admin/src/components/Panel.tsx', "import { useFetchClient } from '@strapi/strapi/admin';"), ['component-imports']);
+    assert.deepEqual(ruleIds('admin/src/utils/x.ts', imp), ['client-importers']);
+    // Other admin exports stay free to use.
+    assert.deepEqual(ruleIds('admin/src/components/Panel.tsx', "import { useNotification, Page } from '@strapi/strapi/admin';"), []);
+  });
+
+  it('keeps data-library hooks out of components', () => {
+    assert.deepEqual(ruleIds('admin/src/pages/Home.tsx', "import { useQuery } from '@tanstack/react-query';"), ['component-data-hooks']);
+    assert.deepEqual(ruleIds('admin/src/pages/App.tsx', "import { QueryClientProvider } from '@tanstack/react-query';"), []);
+    assert.deepEqual(ruleIds('admin/src/features/t/hooks/use-tasks.ts', "import { useQuery } from '@tanstack/react-query';"), []);
+  });
+
+  it('keeps domain modules framework-free', () => {
+    assert.deepEqual(ruleIds('server/src/domain/match.ts', "import { factories } from '@strapi/strapi';"), ['domain-framework-free']);
+    assert.deepEqual(ruleIds('server/src/domain/match.ts', 'export const f = () => strapi.documents("x").findMany();'), ['domain-framework-free']);
+    assert.deepEqual(ruleIds('server/src/domain/match.ts', "import type { Core } from '@strapi/strapi';\nexport const f = (s: string) => s.trim();"), []);
+    assert.deepEqual(ruleIds('server/src/services/s.ts', 'export default ({ strapi }) => ({ f: () => strapi.documents("x") });'), []);
+  });
+
+  it('keeps unit tests units', () => {
+    assert.deepEqual(ruleIds('tests/unit/match.test.ts', "import { getStrapi } from '../support/harness';"), ['unit-stays-unit']);
+    assert.deepEqual(ruleIds('tests/unit/match.test.ts', "import { createStrapi } from '@strapi/strapi';\ncreateStrapi();"), ['unit-stays-unit', 'unit-stays-unit']);
+    assert.deepEqual(ruleIds('tests/unit/match.test.ts', "import { createFakeStrapi } from '../support/fake-strapi';"), []);
+    assert.deepEqual(ruleIds('tests/integration/match.int.test.ts', "import { getStrapi } from '../support/harness';"), []);
+  });
+
+  it('forbids faking framework data access in unit tests', () => {
+    assert.deepEqual(ruleIds('tests/unit/s.test.ts', 'const strapi = { documents: jest.fn(() => ({ findMany: jest.fn() })) };'), ['no-fake-data-access']);
+    assert.deepEqual(ruleIds('tests/unit/s.test.ts', 'const strapi = { db: { query: vi.fn() } };'), ['no-fake-data-access']);
+    assert.deepEqual(ruleIds('tests/unit/s.test.ts', 'const strapi = { log: { warn: jest.fn() } };'), []);
+  });
+
+  it('only lets server adapters import an SDK', () => {
+    assert.deepEqual(ruleIds('server/src/adapters/brevo-mailer.adapter.ts', "import { BrevoClient } from '@getbrevo/brevo';"), []);
+    assert.deepEqual(ruleIds('server/src/services/mail.ts', "import { BrevoClient } from '@getbrevo/brevo';"), ['sdk-importers']);
+  });
+
+  it('rejects an unknown preset', () => {
+    assert.throws(() => resolveConfig({ frontends: [{ root: 'x', preset: 'nope' }] }), /unknown preset/);
   });
 });
