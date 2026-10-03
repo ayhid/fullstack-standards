@@ -57,6 +57,36 @@ node <plugin>/scripts/architecture/check-architecture.mjs --all .       # audit
 node <plugin>/scripts/architecture/check-architecture.mjs --baseline .  # record today's debt
 ```
 
+### Strapi plugins
+
+A Strapi v5 plugin is a frontend (`admin/src`) and a backend in one package. The detector
+recognises one (`strapi.kind: "plugin"`, as a workspace or under a Strapi app's
+`src/plugins/`) and writes two presets instead of a hand-made layout:
+
+```json
+{
+  "frontends": [{ "root": "admin/src", "preset": "strapi-admin" }],
+  "apis": [{ "root": ".", "preset": "strapi-plugin" }]
+}
+```
+
+| Preset | Adds to the rules above |
+|---|---|
+| `strapi-admin` | Strapi's `getFetchClient()` is the API entry point (no wrapper file): only services call it, nothing calls `useFetchClient`; components never call `useQuery`/`useMutation` themselves |
+| `strapi-plugin` | `server/src/domain/**` imports no `@strapi/*` and never touches `strapi`; unit tests (`tests/unit/**`) never import the integration harness or `@strapi/strapi`, never call `createStrapi`, never fake `strapi.documents`/`db`/`entityService`; SDKs only in `server/src/**/*.adapter.ts`; `dist/` and the fixture app are ignored |
+
+A unit's own keys override its preset. The Strapi-specific rules for the rest of the
+plugin live in [strapi-skills](https://github.com/ayhid/strapi-skills), which defers to
+these skills for the admin data layer and its tests.
+
+### In CI
+
+The hooks only run while an agent works. Run the same checks on every push:
+
+```bash
+npx --yes github:ayhid/fullstack-standards#<tag> --all .
+```
+
 ## Wire it into a project
 
 The skills hold the **generic** rules. Everything specific to one project (paths,

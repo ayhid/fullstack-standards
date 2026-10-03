@@ -96,6 +96,6 @@ mocked browser spec with the API spec's work.
 | `templates/api-integration/core/`        | ORM-free harness: container, global setup/teardown, truncate, URL guard |
 | `templates/api-integration/typeorm/`     | TypeORM adapter: migrations, data source, module, factories, example spec |
 | `templates/api-integration/prisma/`      | Prisma adapter: migrate deploy, client, module, factories, example spec |
-| `templates/frontend/*`                   | `test-utils/<library>.tsx` (`renderWithDataLayer`, one per data-fetching library), component specs (invalidation, form and list branches, bulk delete), service spec, cache-key and API-layering guards |
+| `templates/frontend/*`                   | `test-utils/<library>.tsx` (`renderWithDataLayer`, one per data-fetching library, plus `strapi-admin.tsx` for a Strapi plugin's admin), component specs (invalidation, form and list branches, bulk delete), service spec, cache-key and API-layering guards |
 | `templates/third-party/*`                | Mailer port, Brevo adapter + spec, consumer service + spec, SDK import guard |
 | `templates/e2e/*`                        | Worker-scoped names, catch-all route guard               |

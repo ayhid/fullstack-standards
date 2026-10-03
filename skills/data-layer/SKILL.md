@@ -73,7 +73,10 @@ Each layer calls only the next one. Skipping a layer is the bug, even when it wo
    `pagination[...]`, `populate`) never leaks past them. → `references/services.md`
 7. **One entry point to the backend: `apiClient.request({ method, path, query, body })`.**
    It owns every transport concern; nothing else calls `fetch`. →
-   `references/http-client.md`
+   `references/http-client.md`. In a **Strapi plugin's admin panel** the entry point is
+   Strapi's own `getFetchClient()` (it already owns the base URL, the admin token and
+   the error shape): services call it directly, with no wrapper file, and nothing else
+   calls it or `useFetchClient`. The checker's `strapi-admin` preset enforces this.
 8. **Backend services** (NestJS) hold business rules; controllers stay thin. The
    frontend rules do not depend on the backend; the service rules are ORM-neutral, with
    the mechanics in `references/orm/typeorm.md` or `references/orm/prisma.md` (the

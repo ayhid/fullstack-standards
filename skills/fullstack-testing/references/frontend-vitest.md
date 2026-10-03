@@ -67,6 +67,14 @@ Templates: `templates/frontend/tasks-list-invalidation.test.tsx`, `task-form.tes
 
   A fresh layer per test: TanStack Query a new `QueryClient`, SWR a new `Map` cache
   provider, RTK Query a new store.
+
+  **Strapi plugin admin panels** copy `test-utils/strapi-admin.tsx` instead: the same
+  surface, with the Design System theme around the layer, or Strapi's own admin
+  providers (`@strapi/strapi/admin/test`) when `renderWithDataLayer(ui, { admin: true })`
+  is asked for — for components using `useNotification`, `useRBAC` or the router. The
+  entry point there is Strapi's `getFetchClient()`: component tests mock the feature
+  service as usual, and service tests mock `getFetchClient` (`vi.mock('@strapi/strapi/admin',
+  …)`) and assert the path, body and options of each call.
 - **Cover every branch of the hooks the component uses**, each as a service-call
   assertion plus what the user sees:
 
