@@ -1,3 +1,14 @@
+## [1.0.0-beta.2](https://github.com/ayhid/fullstack-standards/compare/v1.0.0-beta.1...v1.0.0-beta.2) (2026-10-03)
+
+### Features
+
+* **checker:** add strapi-admin and strapi-plugin presets ([2569adb](https://github.com/ayhid/fullstack-standards/commit/2569adb165cb2a35f9518e3b5e76e3232d258ea7))
+* **profile:** detect Strapi plugins and write their presets ([c74a502](https://github.com/ayhid/fullstack-standards/commit/c74a502b90a081960f101e53632763f5f30ad602))
+
+### Bug Fixes
+
+* **checker:** count Strapi plugin tests kept outside admin/src ([0bfb122](https://github.com/ayhid/fullstack-standards/commit/0bfb1220a8bc69855cf5f2baee046a626703aa6e))
+
 ## 1.0.0-beta.1 (2026-09-30)
 
 ### Features

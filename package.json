@@ -14,7 +14,7 @@
     "semantic-release": "^24.2.9",
     "typescript": "^5.9.0"
   },
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "bin": {
     "fullstack-standards": "scripts/architecture/check-architecture.mjs"
   },
