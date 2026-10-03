@@ -371,7 +371,7 @@ function detectFrontend(ws) {
   const services = perFeatureService
     ? `${rel(path.dirname(perFeatureService)).replace(/features\/[^/]+\/services$/, 'features/<feature>/services')} (${plural(serviceFiles.length, 'file')})`
     : serviceFiles[0] && `${rel(path.dirname(serviceFiles[0]))} (${plural(serviceFiles.length, 'service file')})`;
-  const transportImport = /from\s+['"][^'"]*(lib\/api\/(client|http)|api-client|http-client)['"]|\bapi(Get|Post|Put|Patch|Delete)\s*\(|\bfetch\s*\(/;
+  const transportImport = /from\s+['"][^'"]*(lib\/api\/(client|http)|api-client|http-client)['"]|\bapi(Get|Post|Put|Patch|Delete)\s*\(|\bfetch\s*\(|\b(get|use)FetchClient\s*\(/;
   const serviceImport = /from\s+['"][^'"]*(\/services\/|\.service)['"]/;
   const inDir = (f, re) => re.test(rel(f));
   const layering = {
@@ -508,6 +508,60 @@ function detectEnvironment() {
   };
 }
 
+// ─── Strapi plugins ──────────────────────────────────────────────────────────
+
+const isStrapiPlugin = (ws) => ws.pkg.strapi?.kind === 'plugin';
+
+/** Plugin workspaces, plus plugins living inside a Strapi app (`src/plugins/<name>`). */
+function strapiPluginWorkspaces() {
+  const found = workspaces.filter(isStrapiPlugin).map((ws) => ({ ...ws, inWorkspaces: true }));
+  for (const app of workspaces.filter((ws) => hasDep(ws, '@strapi/strapi') && !isStrapiPlugin(ws))) {
+    const base = path.join(app.dir, 'src', 'plugins');
+    if (!exists(base)) continue;
+    for (const e of fs.readdirSync(base, { withFileTypes: true })) {
+      const dir = path.join(base, e.name);
+      const pkg = e.isDirectory() ? readJson(path.join(dir, 'package.json')) : undefined;
+      if (pkg?.strapi?.kind === 'plugin') found.push({ dir, pkg, inWorkspaces: false });
+    }
+  }
+  return found;
+}
+
+function detectStrapiPlugin(ws) {
+  const run = (script) =>
+    script && (ws.inWorkspaces ? command(ws, script) : `cd ${rel(ws.dir)} && ${pm} run ${script}`);
+  const adminSrc = path.join(ws.dir, 'admin', 'src');
+  const serverSrc = path.join(ws.dir, 'server', 'src');
+  const admin = exists(adminSrc) && dataLibraryOf(ws) ? detectFrontend({ dir: adminSrc, pkg: ws.pkg }) : undefined;
+  const adminFiles = walk(adminSrc, 6).filter((f) => isSource(f) && !isTest(f));
+  const fixtureApp = ['fixture-app', 'playground', path.join('apps', 'playground'), path.join('tests', 'fixture-app')]
+    .map((d) => path.join(ws.dir, d))
+    .find((d) => exists(path.join(d, 'package.json')));
+  const serverFiles = walk(serverSrc, 7);
+  return {
+    name: ws.pkg.name ?? rel(ws.dir),
+    dir: rel(ws.dir),
+    framework: 'Strapi plugin',
+    version: installedVersion(ws, '@strapi/strapi') ?? ws.pkg.peerDependencies?.['@strapi/strapi'],
+    admin,
+    adminLayout: exists(adminSrc) ? { root: toPosixPath(rel(adminSrc)), preset: 'strapi-admin' } : undefined,
+    sharedClient: adminFiles.filter((f) => /new QueryClient\(/.test(read(f) ?? '')).map(rel),
+    fetchClientOutsideServices: adminFiles.filter(
+      (f) => /\b(get|use)FetchClient\b/.test(read(f) ?? '') && !/(\/services\/|\.service\.tsx?$)/.test(rel(f)),
+    ).length,
+    domain: exists(path.join(serverSrc, 'domain')) ? rel(path.join(serverSrc, 'domain')) : undefined,
+    fixtureApp: fixtureApp && rel(fixtureApp),
+    tests: {
+      runner: hasDep(ws, 'vitest') ? 'vitest' : hasDep(ws, 'jest') ? 'jest' : TODO,
+      unit: run(findScript(ws, ['test:unit', 'test'])),
+      integration: run(findScript(ws, ['test:integration', 'test:int'])),
+      rules: run(findScript(ws, ['test:rules', 'rules'])),
+    },
+    thirdParty: detectThirdParty(ws, serverFiles),
+    layout: { root: toPosixPath(rel(ws.dir)), preset: 'strapi-plugin' },
+  };
+}
+
 // ─── assemble ────────────────────────────────────────────────────────────────
 
 function detectStrapi(ws) {
@@ -520,12 +574,13 @@ function detectStrapi(ws) {
   };
 }
 
+const plugins = strapiPluginWorkspaces().map(detectStrapiPlugin);
 const apis = [
   ...workspaces.filter((ws) => hasDep(ws, '@nestjs/core')).map(detectApi),
-  ...workspaces.filter((ws) => hasDep(ws, '@strapi/strapi')).map(detectStrapi),
+  ...workspaces.filter((ws) => hasDep(ws, '@strapi/strapi') && !isStrapiPlugin(ws)).map(detectStrapi),
 ];
 const frontends = workspaces
-  .filter((ws) => dataLibraryOf(ws))
+  .filter((ws) => dataLibraryOf(ws) && !isStrapiPlugin(ws))
   .map(detectFrontend);
 const detection = {
   root,
@@ -534,6 +589,7 @@ const detection = {
   workspaces: workspaces.map((w) => w.pkg.name ?? rel(w.dir)),
   apis,
   frontends,
+  plugins,
   e2e: detectE2e(),
   environment: detectEnvironment(),
 };
@@ -579,23 +635,59 @@ function renderApi(api) {
       `${t.integrationConfig ? `; config ${code(t.integrationConfig)}` : ''}` +
       `; Testcontainers ${t.testcontainers ? 'installed' : 'not installed'}; \`*.integration-spec.ts\` files: ${t.integrationSpecs}`,
   );
-  if (api.thirdParty.length) {
-    const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-    lines.push(
-      `- Third-party SDKs: ${api.thirdParty.map((p) => `\`${p.package}\` (${plural(p.importers.length, 'file')})`).join(', ')}`,
-    );
-    for (const p of api.thirdParty) {
-      if (p.importers.length > 1 || (p.importers.length === 1 && !p.adapters)) {
-        lines.push(`  - ⚠️ \`${p.package}\` imported outside a single \`*.adapter.ts\`: ${p.importers.map((f) => `\`${f}\``).join(', ')}`);
-      }
-      if (p.mockedInSpecs) {
-        lines.push(`  - ⚠️ \`${p.package}\` is \`jest.mock\`ed in ${plural(p.mockedInSpecs, 'spec')} — mock the port instead`);
-      }
-    }
-  }
+  lines.push(...renderThirdParty(api.thirdParty));
   if (!t.harness && t.databaseUrlInEnv) {
     lines.push('  - ⚠️ No harness while `DATABASE_URL` is configured: check whether DB-backed specs run against the developer database');
   }
+  return lines.join('\n');
+}
+
+function renderThirdParty(thirdParty) {
+  if (!thirdParty.length) return [];
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const lines = [
+    `- Third-party SDKs: ${thirdParty.map((p) => `\`${p.package}\` (${plural(p.importers.length, 'file')})`).join(', ')}`,
+  ];
+  for (const p of thirdParty) {
+    if (p.importers.length > 1 || (p.importers.length === 1 && !p.adapters)) {
+      lines.push(`  - ⚠️ \`${p.package}\` imported outside a single \`*.adapter.ts\`: ${p.importers.map((f) => `\`${f}\``).join(', ')}`);
+    }
+    if (p.mockedInSpecs) {
+      lines.push(`  - ⚠️ \`${p.package}\` is \`jest.mock\`ed in ${plural(p.mockedInSpecs, 'spec')} — mock the port instead`);
+    }
+  }
+  return lines;
+}
+
+function renderStrapiPlugin(p) {
+  const fe = p.admin;
+  const lines = [
+    `**Strapi plugin — \`${p.name}\` (\`${p.dir}\`), Strapi ${v(p.version)}**`,
+    '',
+    '- Plugin rules: the `strapi-plugin-dev` and `strapi-plugin-testing` skills (strapi-skills); the admin follows `data-layer` and `fullstack-testing`, with Strapi\'s `getFetchClient()` as the API entry point (no `apiClient` wrapper)',
+  ];
+  if (fe) {
+    lines.push(
+      `- Admin: ${fe.dataLibraryName} ${v(fe.dataLibraryVersion)} (\`data-layer/references/adapters/${fe.dataLibrary}.md\`); shared client: ${
+        p.sharedClient.length === 1 ? code(p.sharedClient[0]) : p.sharedClient.length ? `⚠️ ${p.sharedClient.length} \`new QueryClient()\` (${p.sharedClient.map((f) => `\`${f}\``).join(', ')}) — keep one, shared by every provider` : `${TODO} — create \`admin/src/lib/query-client.ts\``
+      }`,
+      `- Cache key factory: ${fe.queryKeys ? code(fe.queryKeys) : 'none found — create `admin/src/lib/query-keys.ts`'}${fe.inlineKeys ? `; ⚠️ ${fe.inlineKeys} inline ${fe.inlineKeyLabel} outside tests` : ''}`,
+      `- Frontend services: ${fe.services ? code(fe.services) : 'none found — only services call `getFetchClient()`'}; feature hooks: ${code(fe.featureHooks)}`,
+      ...layeringDebt(fe.layering),
+    );
+  } else if (p.adminLayout) {
+    lines.push('- Admin: no data-fetching library in the dependencies');
+  }
+  if (p.fetchClientOutsideServices) {
+    lines.push(`  - ⚠️ admin files calling \`getFetchClient\`/\`useFetchClient\` outside a service: ${p.fetchClientOutsideServices}`);
+  }
+  lines.push(
+    `- Server domain modules: ${p.domain ? code(p.domain) : 'none yet (`server/src/domain/`, framework-free)'}`,
+    ...renderThirdParty(p.thirdParty),
+    `- Fixture app: ${p.fixtureApp ? code(p.fixtureApp) : '⚠️ none found — integration tests boot a real Strapi from one (`strapi-plugin-testing`)'}`,
+    `- Tests: ${p.tests.runner}; unit ${code(p.tests.unit)}; integration ${code(p.tests.integration)}; rules ${code(p.tests.rules)}`,
+    `- Architecture checks: presets \`strapi-admin\` (\`${p.adminLayout?.root ?? 'admin/src'}\`) and \`strapi-plugin\` (\`${p.layout.root}\`) in \`.claude/fullstack-standards.json\``,
+  );
   return lines.join('\n');
 }
 
@@ -646,12 +738,15 @@ function renderE2e(e2e) {
   ].join('\n');
 }
 
+// The Postgres harness belongs to NestJS APIs; a plugin-only repo has none.
+const usesPostgresHarness = apis.some((a) => a.framework === 'NestJS') || !plugins.length;
+
 function renderEnvironment(env) {
   const lines = [
     '**Environment and CI**',
     '',
     `- Package manager: ${pm}${isMonorepo ? ` (monorepo: ${detection.workspaces.join(', ')})` : ''}`,
-    `- Postgres in dev/prod: ${env.postgres ? `\`${env.postgres}\` — pin the Testcontainers image to this major` : TODO}`,
+    ...(usesPostgresHarness ? [`- Postgres in dev/prod: ${env.postgres ? `\`${env.postgres}\` — pin the Testcontainers image to this major` : TODO}`] : []),
     `- Node: local ${code(env.nodeLocal)}, CI ${env.nodeCi.length ? env.nodeCi.map((n) => `\`${n}\``).join(', ') : TODO}` +
       `${env.nodeMismatch ? ' — ⚠️ major versions differ' : ''}`,
     `- CI workflows: ${env.ci.length ? env.ci.map((c) => `\`${c}\``).join(', ') : 'none'}; workflows mentioning Playwright: ${env.ciPlaywright.length ? env.ciPlaywright.map((f) => `\`${f}\``).join(', ') : 'no'}; Postgres service in CI: ${env.ciHasPostgresService ? 'yes' : 'no'}`,
@@ -662,9 +757,11 @@ function renderEnvironment(env) {
     );
   }
   if (env.rootTest) lines.push(`- Root \`test\` script: \`${env.rootTest}\` — ${TODO}: does it include Playwright?`);
-  lines.push(
-    '- Integration DB resolution: `TEST_DATABASE_URL` → (`CI` && `DATABASE_URL`) → Testcontainers. ⚠️ Never point it at a database you want to keep.',
-  );
+  if (usesPostgresHarness) {
+    lines.push(
+      '- Integration DB resolution: `TEST_DATABASE_URL` → (`CI` && `DATABASE_URL`) → Testcontainers. ⚠️ Never point it at a database you want to keep.',
+    );
+  }
   return lines.join('\n');
 }
 
@@ -684,11 +781,12 @@ function renderBlock(manual) {
     START,
     '## Project profile',
     '',
-    'Read by the `data-layer` and `fullstack-testing` skills; it wins',
+    `Read by the \`data-layer\` and \`fullstack-testing\` skills${plugins.length ? ' (and, for Strapi plugins, `strapi-plugin-dev` and `strapi-plugin-testing`)' : ''}; it wins`,
     'over them wherever they disagree. Generated by `project-profile` — re-run it',
     'after stack changes; only the manual section below is preserved.',
     '',
     ...apis.map(renderApi).flatMap((b) => [b, '']),
+    ...plugins.map(renderStrapiPlugin).flatMap((b) => [b, '']),
     ...frontends.map(renderFrontend).flatMap((b) => [b, '']),
     renderE2e(detection.e2e),
     '',
@@ -724,8 +822,14 @@ if (flag('--write-config')) {
   const next = {
     $comment: 'Layout enforced by the fullstack-standards Claude Code hooks. Edit freely: re-running project-profile never overwrites a value.',
     ...current,
-    frontends: merge(current.frontends, frontends.map((f) => f.layout)),
-    apis: merge(current.apis, apis.filter((a) => a.framework === 'NestJS').map((a) => a.layout)),
+    frontends: merge(current.frontends, [
+      ...frontends.map((f) => f.layout),
+      ...plugins.map((p) => p.adminLayout).filter(Boolean),
+    ]),
+    apis: merge(current.apis, [
+      ...apis.filter((a) => a.framework === 'NestJS').map((a) => a.layout),
+      ...plugins.map((p) => p.layout),
+    ]),
     baseline: current.baseline ?? {},
   };
   fs.mkdirSync(path.dirname(file), { recursive: true });

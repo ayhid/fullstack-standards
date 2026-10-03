@@ -22,7 +22,9 @@ merely filled in.
    It finds the package manager and workspaces, NestJS APIs and their ORM (Prisma:
    version, generator, client import, driver adapter, extensions on `PrismaService`;
    TypeORM: data source, migrations), Strapi APIs and their major version, test
-   runners and commands, the integration harness, the data-fetching library (TanStack Query, SWR
+   runners and commands, the integration harness, Strapi plugins (as workspaces or under a
+   Strapi app's `src/plugins/`: admin data layer, domain modules, fixture app, test
+   commands), the data-fetching library (TanStack Query, SWR
    or RTK Query) and its files (cache defaults, key or tag factory, the API entry point, frontend services, feature hooks), layering debt
    (hooks calling the HTTP layer, components skipping hooks, `renderHook` tests of
    feature hooks), third-party SDKs per API and the files importing them, Playwright,
@@ -32,7 +34,8 @@ merely filled in.
    With the fullstack-standards plugin installed, also write the layout its hooks
    enforce: `node <this skill>/scripts/detect-profile.mjs . --write-config` fills
    `.claude/fullstack-standards.json` (source roots, `@/` aliases, component folders,
-   the API entry point) and never overwrites a value already there. Check each path
+   the API entry point; for a Strapi plugin, the `strapi-admin` and `strapi-plugin`
+   presets) and never overwrites a value already there. Check each path
    in it like any detected line. Then audit and, on a project with existing debt,
    record the baseline — ask the user first, and not while a refactor is in flight:
 
